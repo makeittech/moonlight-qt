@@ -100,3 +100,4 @@ Check out our [website](https://moonlight-stream.org) for project links and info
 # Test: Fixed matrix.output references
 # Test GitHub Actions workflow
 # Test: GitHub Actions workflow fixes
+# Test: Debug GitHub Actions

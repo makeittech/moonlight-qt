@@ -16,7 +16,7 @@ jobs:
         fetch-depth: 0
     
     - name: Setup Flatpak
-      uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+      uses: flatpak/flatpak-github-actions/flatpak-builder@v7
       with:
         bundle: moonlight-steamdeck-test
         cache-key: flatpak-builder-test-${{ hashFiles('moonlight-steamdeck.yml') }}

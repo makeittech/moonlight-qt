@@ -19,13 +19,6 @@ on:
 jobs:
   build-flatpak:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        include:
-          - name: Steam Deck Optimized
-            manifest: moonlight-steamdeck.yml
-            output: moonlight-steamdeck
-    
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -33,10 +26,11 @@ jobs:
         fetch-depth: 0  # Full history for versioning
     
     - name: Setup Flatpak
-      uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+      uses: flatpak/flatpak-github-actions/flatpak-builder@v7
       with:
         manifest-path: moonlight-steamdeck.yml
         bundle: moonlight-steamdeck
+        cache-key: flatpak-builder-moonlight-steamdeck-${{ hashFiles('moonlight-steamdeck.yml') }}
     
     - name: Get version info
       id: version

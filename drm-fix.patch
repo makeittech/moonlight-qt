@@ -1,0 +1,22 @@
+--- a/app/streaming/video/ffmpeg-renderers/drm.cpp
++++ b/app/streaming/video/ffmpeg-renderers/drm.cpp
+@@ -340,6 +340,7 @@ bool DrmRenderer::initialize(PDECODER_PARAMETERS params)
+     }
+ 
+     if (info.subsystem == SDL_SYSWM_KMSDRM) {
++#ifndef DISABLE_KMSDRM
+         SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                     "Sharing DRM FD with SDL");
+ 
+@@ -347,6 +348,12 @@ bool DrmRenderer::initialize(PDECODER_PARAMETERS params)
+         m_DrmFd = info.info.kmsdrm.drm_fd;
+         m_SdlOwnsDrmFd = true;
+     }
++#else
++        SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
++                    "KMSDRM backend disabled at compile time");
++        return false;
++#endif
+     }
+     else
+ #endif

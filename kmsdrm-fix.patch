@@ -1,0 +1,27 @@
+--- a/app/streaming/video/ffmpeg-renderers/drm.cpp
++++ b/app/streaming/video/ffmpeg-renderers/drm.cpp
+@@ -341,12 +341,9 @@ bool DrmRenderer::initialize(PDECODER_PARAMETERS params)
+     if (info.subsystem == SDL_SYSWM_KMSDRM) {
+         SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                     "KMSDRM backend not available, disabling DRM renderer");
+-        SDL_assert(info.info.kmsdrm.drm_fd >= 0);
+-        m_DrmFd = info.info.kmsdrm.drm_fd;
+-        m_SdlOwnsDrmFd = true;
++        return false;
+     }
+     else
+-
+--- a/app/streaming/video/ffmpeg-renderers/vaapi.cpp
++++ b/app/streaming/video/ffmpeg-renderers/vaapi.cpp
+@@ -122,8 +122,9 @@ bool VaapiRenderer::initialize(PDECODER_PARAMETERS params)
+ #if defined(SDL_VIDEO_DRIVER_KMSDRM) && defined(HAVE_LIBVA_DRM) && SDL_VERSION_ATLEAST(2, 0, 15)
+     else if (info.subsystem == SDL_SYSWM_KMSDRM) {
+         SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+-                    "Sharing DRM FD with SDL");
+-        SDL_assert(info.info.kmsdrm.drm_fd >= 0);
++                    "KMSDRM backend not available, disabling VAAPI DRM renderer");
++        return false;
++    }
+ 
+         // It's possible to enter this function several times as we're probing VA drivers.
+         // Make sure to only duplicate the DRM FD the first time through.

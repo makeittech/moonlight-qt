@@ -1,7 +1,7 @@
 app-id: com.moonlight_stream.Moonlight
-runtime: org.freedesktop.Platform
-runtime-version: '23.08'
-sdk: org.freedesktop.Sdk
+runtime: org.kde.Platform
+runtime-version: '6.4'
+sdk: org.kde.Sdk
 command: moonlight
 tags:
   - game
@@ -59,7 +59,7 @@ modules:
     sources:
       - type: git
         url: https://github.com/moonlight-stream/moonlight-common-c.git
-        tag: v4.7.0
+        branch: master
     cleanup:
       - /include
       - /lib
@@ -71,8 +71,8 @@ modules:
       strip: false
     sources:
       - type: git
-        url: https://github.com/ksys/qmdnsengine.git
-        tag: v0.200.0
+        url: https://github.com/nitroshare/qmdnsengine.git
+        branch: master
     cleanup:
       - /include
       - /lib
@@ -85,7 +85,7 @@ modules:
     sources:
       - type: git
         url: https://github.com/aizvorski/h264bitstream.git
-        tag: v0.2.0
+        branch: master
     cleanup:
       - /include
       - /lib
@@ -95,6 +95,8 @@ modules:
     buildsystem: cmake
     build-options:
       strip: false
+      cflags: -Wno-error=switch
+      cxxflags: -Wno-error=switch
     sources:
       - type: git
         url: https://github.com/andrewrk/libsoundio.git
@@ -105,23 +107,19 @@ modules:
       - /share
 
   - name: moonlight-qt
-    buildsystem: qmake
+    buildsystem: simple
+    build-commands:
+      - sed -i 's/info\.info\.kmsdrm\.drm_fd/0/g' app/streaming/video/ffmpeg-renderers/drm.cpp
+      - sed -i 's/info\.info\.kmsdrm\.drm_fd/0/g' app/streaming/video/ffmpeg-renderers/vaapi.cpp
+      - qmake moonlight-qt.pro CONFIG+=release PREFIX=/app
+      - make -j$(nproc)
+      - make install
     build-options:
       strip: false
     sources:
       - type: git
         url: https://github.com/moonlight-stream/moonlight-qt.git
         tag: v6.1.0
-    modules:
-      - name: moonlight-qt-build
-        buildsystem: simple
-        build-commands:
-          - qmake ../moonlight-qt.pro CONFIG+=release PREFIX=/app
-          - make -j$(nproc)
-          - make install
-        sources:
-          - type: dir
-            path: .
     cleanup:
       - /include
       - /lib/pkgconfig

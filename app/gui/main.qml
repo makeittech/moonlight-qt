@@ -9,6 +9,7 @@ import AutoUpdateChecker 1.0
 import StreamingPreferences 1.0
 import SystemProperties 1.0
 import SdlGamepadKeyNavigation 1.0
+import Session 1.0
 
 ApplicationWindow {
     property bool pollingActive: false
@@ -67,6 +68,11 @@ ApplicationWindow {
             unmappedGamepadDialog.unmappedGamepads = SystemProperties.unmappedGamepads
             unmappedGamepadDialog.open()
         }
+        
+        // Try to auto-connect to last used host after a short delay
+        if (initialView === "qrc:/gui/PcView.qml" && StreamingPreferences.autoConnectToLastHost) {
+            autoConnectTimer.start()
+        }
     }
   
     // It would be better to use TextMetrics here, but it always lays out
@@ -93,18 +99,47 @@ ApplicationWindow {
             stackView.pop()
         }
     }
+    
+    function handleAutoConnectRequested(computer) {
+        console.log("Auto-connecting to:", computer.name)
+        
+        // Create a session for the desktop app (app ID 0)
+        var desktopApp = { id: 0, name: "Desktop" }
+        var session = new Session(computer, desktopApp)
+        
+        // Push the stream segue to start streaming
+        var component = Qt.createComponent("StreamSegue.qml")
+        if (component.status === Component.Ready) {
+            var streamSegue = component.createObject(stackView, {
+                "session": session,
+                "appName": "Desktop",
+                "isResume": false,
+                "quitAfter": false
+            })
+            stackView.push(streamSegue)
+        }
+    }
+    
+    function handleAutoConnectFailed(error) {
+        console.log("Auto-connect failed:", error)
+        // Auto-connect failure is silent - just continue to normal UI
+    }
 
     StackView {
         id: stackView
         anchors.fill: parent
         focus: true
 
-        Component.onCompleted: {
-            // Perform our early initialization before constructing
-            // the initial view and pushing it to the StackView
-            doEarlyInit()
-            push(initialView)
-        }
+            Component.onCompleted: {
+        // Perform our early initialization before constructing
+        // the initial view and pushing it to the StackView
+        doEarlyInit()
+        push(initialView)
+        
+        // Connect auto-connection signals
+        ComputerManager.autoConnectRequested.connect(handleAutoConnectRequested)
+        ComputerManager.autoConnectFailed.connect(handleAutoConnectFailed)
+    }
 
         onCurrentItemChanged: {
             // Ensure focus travels to the next view when going back
@@ -155,6 +190,15 @@ ApplicationWindow {
                 ComputerManager.stopPollingAsync()
                 pollingActive = false
             }
+        }
+    }
+    
+    // Auto-connect timer - waits a bit for hosts to be discovered before attempting auto-connection
+    Timer {
+        id: autoConnectTimer
+        interval: 3000 // 3 seconds delay
+        onTriggered: {
+            ComputerManager.autoConnectToLastHost()
         }
     }
 

@@ -227,6 +227,11 @@ public:
     Q_INVOKABLE void stopPollingAsync();
 
     Q_INVOKABLE void addNewHostManually(QString address);
+    
+    // Auto-connection functionality
+    Q_INVOKABLE void setLastUsedHost(const QString& hostUuid);
+    Q_INVOKABLE QString getLastUsedHost() const;
+    Q_INVOKABLE void autoConnectToLastHost();
 
     void addNewHost(NvAddress address, bool mdns, NvAddress mdnsIpv6Address = NvAddress());
 
@@ -253,6 +258,10 @@ signals:
     void computerAddCompleted(QVariant success, QVariant detectedPortBlocking);
 
     void quitAppCompleted(QVariant error);
+    
+    // Auto-connection signals
+    void autoConnectRequested(NvComputer* computer);
+    void autoConnectFailed(const QString& error);
 
 private slots:
     void handleAboutToQuit();
@@ -284,4 +293,7 @@ private:
     QMutex m_DelayedFlushMutex; // Lock ordering: Must never be acquired while holding NvComputer lock
     QWaitCondition m_DelayedFlushCondition;
     bool m_NeedsDelayedFlush;
+    
+    // Auto-connection
+    QString m_LastUsedHostUuid;
 };

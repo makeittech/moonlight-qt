@@ -54,6 +54,7 @@
 #include <QCursor>
 #include <QWindow>
 #include <QScreen>
+#include <QTimer>
 
 #define CONN_TEST_SERVER "qt.conntest.moonlight-stream.org"
 
@@ -100,58 +101,61 @@ void Session::clConnectionTerminated(int errorCode)
     unsigned int portFlags = LiGetPortFlagsFromTerminationErrorCode(errorCode);
     s_ActiveSession->m_PortTestResults = LiTestClientConnectivity(CONN_TEST_SERVER, 443, portFlags);
 
-    // Display the termination dialog if this was not intended
+    // Check if this is a retryable error
+    bool isRetryableError = false;
     switch (errorCode) {
     case ML_ERROR_GRACEFUL_TERMINATION:
+        // Don't retry graceful terminations
         break;
 
     case ML_ERROR_NO_VIDEO_TRAFFIC:
-        s_ActiveSession->m_UnexpectedTermination = true;
-
-        char ports[128];
-        SDL_assert(portFlags != 0);
-        LiStringifyPortFlags(portFlags, ", ", ports, sizeof(ports));
-        emit s_ActiveSession->displayLaunchError(tr("No video received from host.") + "\n\n"+
-                                                 tr("Check your firewall and port forwarding rules for port(s): %1").arg(ports));
-        break;
-
     case ML_ERROR_NO_VIDEO_FRAME:
-        s_ActiveSession->m_UnexpectedTermination = true;
-        emit s_ActiveSession->displayLaunchError(tr("Your network connection isn't performing well. Reduce your video bitrate setting or try a faster connection."));
+    case ML_ERROR_UNEXPECTED_EARLY_TERMINATION:
+        // These are potentially retryable network-related errors
+        isRetryableError = true;
         break;
 
     case ML_ERROR_PROTECTED_CONTENT:
-    case ML_ERROR_UNEXPECTED_EARLY_TERMINATION:
-        s_ActiveSession->m_UnexpectedTermination = true;
-        emit s_ActiveSession->displayLaunchError(tr("Something went wrong on your host PC when starting the stream.") + "\n\n" +
-                                                 tr("Make sure you don't have any DRM-protected content open on your host PC. You can also try restarting your host PC."));
-        break;
-
     case ML_ERROR_FRAME_CONVERSION:
+        // These are not retryable as they're host-side issues
         s_ActiveSession->m_UnexpectedTermination = true;
-        emit s_ActiveSession->displayLaunchError(tr("The host PC reported a fatal video encoding error.") + "\n\n" +
-                                                 tr("Try disabling HDR mode, changing the streaming resolution, or changing your host PC's display resolution."));
+        if (errorCode == ML_ERROR_PROTECTED_CONTENT || errorCode == ML_ERROR_UNEXPECTED_EARLY_TERMINATION) {
+            emit s_ActiveSession->displayLaunchError(tr("Something went wrong on your host PC when starting the stream.") + "\n\n" +
+                                                     tr("Make sure you don't have any DRM-protected content open on your host PC. You can also try restarting your host PC."));
+        } else if (errorCode == ML_ERROR_FRAME_CONVERSION) {
+            emit s_ActiveSession->displayLaunchError(tr("The host PC reported a fatal video encoding error.") + "\n\n" +
+                                                     tr("Try disabling HDR mode, changing the streaming resolution, or changing your host PC's display resolution."));
+        }
         break;
 
     default:
-        s_ActiveSession->m_UnexpectedTermination = true;
-
-        // We'll assume large errors are hex values
-        bool hexError = qAbs(errorCode) > 1000;
-        emit s_ActiveSession->displayLaunchError(tr("Connection terminated") + "\n\n" +
-                                                 tr("Error code: %1").arg(errorCode, hexError ? 8 : 0, hexError ? 16 : 10, QChar('0')));
+        // For unknown errors, try to retry if they seem network-related
+        if (qAbs(errorCode) < 1000) {
+            isRetryableError = true;
+        } else {
+            s_ActiveSession->m_UnexpectedTermination = true;
+            // We'll assume large errors are hex values
+            bool hexError = qAbs(errorCode) > 1000;
+            emit s_ActiveSession->displayLaunchError(tr("Connection terminated") + "\n\n" +
+                                                     tr("Error code: %1").arg(errorCode, hexError ? 8 : 0, hexError ? 16 : 10, QChar('0')));
+        }
         break;
     }
 
     SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
-                 "Connection terminated: %d",
-                 errorCode);
+                 "Connection terminated: %d (retryable: %s)",
+                 errorCode, isRetryableError ? "yes" : "no");
 
-    // Push a quit event to the main loop
-    SDL_Event event;
-    event.type = SDL_QUIT;
-    event.quit.timestamp = SDL_GetTicks();
-    SDL_PushEvent(&event);
+    if (isRetryableError && !s_ActiveSession->m_RetryInProgress) {
+        // Start retry mechanism instead of quitting immediately
+        s_ActiveSession->startRetry();
+    } else {
+        // Push a quit event to the main loop for non-retryable errors
+        SDL_Event event;
+        event.type = SDL_QUIT;
+        event.quit.timestamp = SDL_GetTicks();
+        SDL_PushEvent(&event);
+    }
 }
 
 void Session::clLogMessage(const char* format, ...)
@@ -580,6 +584,10 @@ Session::Session(NvComputer* computer, NvApp& app, StreamingPreferences *prefere
       m_ShouldExitAfterQuit(false),
       m_AsyncConnectionSuccess(false),
       m_PortTestResults(0),
+      m_RetryCount(0),
+      m_MaxRetries(3),
+      m_RetryInProgress(false),
+      m_CancelRetry(false),
       m_OpusDecoder(nullptr),
       m_AudioRenderer(nullptr),
       m_AudioSampleCount(0),
@@ -2294,6 +2302,17 @@ void Session::execInternal()
         case SDL_KEYUP:
         case SDL_KEYDOWN:
             presence.runCallbacks();
+            
+            // Handle cancel retry key combination (Ctrl+Alt+C)
+            if (event.type == SDL_KEYDOWN && m_RetryInProgress) {
+                SDL_Keycode key = event.key.keysym.sym;
+                Uint16 mod = event.key.keysym.mod;
+                if (key == SDLK_c && (mod & KMOD_CTRL) && (mod & KMOD_ALT)) {
+                    cancelRetry();
+                    break;
+                }
+            }
+            
             m_InputHandler->handleKeyEvent(&event.key);
             break;
         case SDL_MOUSEBUTTONDOWN:
@@ -2413,3 +2432,93 @@ DispatchDeferredCleanup:
     QThreadPool::globalInstance()->start(new DeferredSessionCleanupTask(this));
 }
 
+void Session::startRetry()
+{
+    if (m_RetryInProgress) {
+        return;
+    }
+    
+    m_RetryInProgress = true;
+    m_CancelRetry = false;
+    m_RetryCount = 0;
+    
+    // Show retry overlay
+    m_OverlayManager.updateOverlayText(Overlay::OverlayRetry, 
+        QString("Connection lost. Retrying... (%1/%2)").arg(m_RetryCount + 1).arg(m_MaxRetries).toUtf8().constData());
+    m_OverlayManager.setOverlayState(Overlay::OverlayRetry, true);
+    
+    emit retryStarting(m_RetryCount + 1, m_MaxRetries);
+    
+    // Start the retry process
+    retryConnection();
+}
+
+void Session::cancelRetry()
+{
+    if (!m_RetryInProgress) {
+        return;
+    }
+    
+    m_CancelRetry = true;
+    m_RetryInProgress = false;
+    
+    // Hide retry overlay
+    m_OverlayManager.setOverlayState(Overlay::OverlayRetry, false);
+    
+    emit retryCancelled();
+    
+    // Push a quit event to the main loop
+    SDL_Event event;
+    event.type = SDL_QUIT;
+    event.quit.timestamp = SDL_GetTicks();
+    SDL_PushEvent(&event);
+}
+
+void Session::retryConnection()
+{
+    if (m_CancelRetry || m_RetryCount >= m_MaxRetries) {
+        if (m_RetryCount >= m_MaxRetries) {
+            // Hide retry overlay
+            m_OverlayManager.setOverlayState(Overlay::OverlayRetry, false);
+            emit retryFailed(m_RetryCount, m_MaxRetries);
+        }
+        m_RetryInProgress = false;
+        return;
+    }
+    
+    m_RetryCount++;
+    
+    // Update overlay text
+    m_OverlayManager.updateOverlayText(Overlay::OverlayRetry, 
+        QString("Connection lost. Retrying... (%1/%2)").arg(m_RetryCount).arg(m_MaxRetries).toUtf8().constData());
+    
+    emit retryStarting(m_RetryCount, m_MaxRetries);
+    
+    // Use a timer to avoid blocking the main event loop
+    QTimer::singleShot(2000, [this]() {
+        if (m_CancelRetry) {
+            return;
+        }
+        
+        // Try to reconnect
+        if (startConnectionAsync()) {
+            m_RetryInProgress = false;
+            m_OverlayManager.setOverlayState(Overlay::OverlayRetry, false);
+            emit connectionStarted();
+        } else {
+            // Retry failed, try again after a delay
+            QTimer::singleShot(3000, [this]() {
+                if (!m_CancelRetry) {
+                    retryConnection();
+                }
+            });
+        }
+    });
+}
+
+void Session::setMaxRetries(int maxRetries)
+{
+    if (maxRetries >= 0 && maxRetries <= 10) {
+        m_MaxRetries = maxRetries;
+    }
+}

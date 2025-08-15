@@ -125,6 +125,8 @@ Session* ComputerModel::createSessionForCurrentGame(int computerIndex)
 
     for (NvApp& app : computer->appList) {
         if (app.id == computer->currentGameId) {
+            // Track this as the last used host
+            m_ComputerManager->setLastUsedHost(computer->uuid);
             return new Session(computer, app);
         }
     }

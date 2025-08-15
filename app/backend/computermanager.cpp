@@ -976,4 +976,56 @@ QString ComputerManager::generatePinString()
     return QString::asprintf("%04u", dist(engine));
 }
 
+void ComputerManager::setLastUsedHost(const QString& hostUuid)
+{
+    m_LastUsedHostUuid = hostUuid;
+    
+    // Save to QSettings
+    QSettings settings;
+    settings.setValue("lastUsedHost", hostUuid);
+}
+
+QString ComputerManager::getLastUsedHost() const
+{
+    if (m_LastUsedHostUuid.isEmpty()) {
+        // Try to load from QSettings
+        QSettings settings;
+        m_LastUsedHostUuid = settings.value("lastUsedHost").toString();
+    }
+    return m_LastUsedHostUuid;
+}
+
+void ComputerManager::autoConnectToLastHost()
+{
+    QString lastHostUuid = getLastUsedHost();
+    if (lastHostUuid.isEmpty()) {
+        emit autoConnectFailed("No last used host found");
+        return;
+    }
+    
+    // Find the computer with this UUID
+    QReadLocker lock(&m_Lock);
+    NvComputer* computer = m_KnownHosts.value(lastHostUuid);
+    lock.unlock();
+    
+    if (!computer) {
+        emit autoConnectFailed("Last used host not found in known hosts");
+        return;
+    }
+    
+    // Check if the computer is online and paired
+    if (computer->state != NvComputer::CS_ONLINE) {
+        emit autoConnectFailed("Last used host is not online");
+        return;
+    }
+    
+    if (computer->pairState != NvComputer::PS_PAIRED) {
+        emit autoConnectFailed("Last used host is not paired");
+        return;
+    }
+    
+    // Emit the auto-connect signal
+    emit autoConnectRequested(computer);
+}
+
 #include "computermanager.moc"

@@ -106,6 +106,25 @@ Item {
             }
         }
     }
+    
+    function retryStarting(retryCount, maxRetries)
+    {
+        console.log("Retry starting: " + retryCount + "/" + maxRetries)
+    }
+    
+    function retryFailed(retryCount, maxRetries)
+    {
+        console.log("Retry failed after " + retryCount + " attempts")
+        streamSegueErrorDialog.text = qsTr("Connection failed after %1 retry attempts. Please check your network connection and try again.").arg(maxRetries)
+    }
+    
+    function retryCancelled()
+    {
+        console.log("Retry cancelled by user")
+        // Exit this view since user cancelled
+        stackView.pop()
+        window.visible = true
+    }
 
     function sessionReadyForDeletion()
     {
@@ -136,6 +155,11 @@ Item {
         session.quitStarting.connect(quitStarting)
         session.sessionFinished.connect(sessionFinished)
         session.readyForDeletion.connect(sessionReadyForDeletion)
+        
+        // Hook up retry signals
+        session.retryStarting.connect(retryStarting)
+        session.retryFailed.connect(retryFailed)
+        session.retryCancelled.connect(retryCancelled)
 
         // Kick off the stream
         spinnerTimer.start()
@@ -165,7 +189,8 @@ Item {
             // with Session.exec() which requires no concurrent
             // gamepad usage.
             hintText.text = qsTr("Tip:") + " " + qsTr("Press %1 to disconnect your session").arg(SdlGamepadKeyNavigation.getConnectedGamepads() > 0 ?
-                                                  qsTr("Start+Select+L1+R1") : qsTr("Ctrl+Alt+Shift+Q"))
+                                                  qsTr("Start+Select+L1+R1") : qsTr("Ctrl+Alt+Shift+Q")) + 
+                           "\n" + qsTr("Press Ctrl+Alt+C to cancel retry if connection is lost")
 
             // Stop GUI gamepad usage now
             SdlGamepadKeyNavigation.disable()

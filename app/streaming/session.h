@@ -125,6 +125,13 @@ public:
     void flushWindowEvents();
 
     void setShouldExitAfterQuit();
+    
+    // Retry mechanism
+    void startRetry();
+    void cancelRetry();
+    void retryConnection();
+    void setMaxRetries(int maxRetries);
+    int getMaxRetries() const { return m_MaxRetries; }
 
 signals:
     void stageStarting(QString stage);
@@ -140,6 +147,11 @@ signals:
     void quitStarting();
 
     void sessionFinished(int portTestResult);
+    
+    // Retry-related signals
+    void retryStarting(int retryCount, int maxRetries);
+    void retryFailed(int retryCount, int maxRetries);
+    void retryCancelled();
 
     // Emitted after sessionFinished() when the session is ready to be destroyed
     void readyForDeletion();
@@ -270,6 +282,12 @@ private:
 
     bool m_AsyncConnectionSuccess;
     int m_PortTestResults;
+    
+    // Retry mechanism
+    int m_RetryCount;
+    int m_MaxRetries;
+    bool m_RetryInProgress;
+    bool m_CancelRetry;
 
     int m_ActiveVideoFormat;
     int m_ActiveVideoWidth;

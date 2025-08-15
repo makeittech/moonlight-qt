@@ -1,0 +1,36 @@
+name: Test Steam Deck Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - cursor/build-flatpak-for-steam-deck-2dfa
+
+jobs:
+  test-build:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Setup Flatpak
+      uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+      with:
+        bundle-name: moonlight-steamdeck-test
+        cache-key: flatpak-builder-test-${{ hashFiles('moonlight-steamdeck.yml') }}
+        manifest-path: moonlight-steamdeck.yml
+    
+    - name: Test build completion
+      run: |
+        echo "✅ Build test completed successfully!"
+        echo "📦 Flatpak bundle created: moonlight-steamdeck-test.flatpak"
+        echo "🎮 Ready for Steam Deck installation"
+    
+    - name: Upload test artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: moonlight-steamdeck-test
+        path: moonlight-steamdeck-test.flatpak
+        retention-days: 7

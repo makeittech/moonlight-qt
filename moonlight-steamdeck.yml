@@ -1,0 +1,141 @@
+app-id: com.moonlight_stream.Moonlight
+runtime: org.freedesktop.Platform
+runtime-version: '23.08'
+sdk: org.freedesktop.Sdk
+command: moonlight
+tags:
+  - game
+  - streaming
+  - remote-play
+finish-args:
+  # Network and IPC access
+  - --share=network
+  - --share=ipc
+  
+  # Display and audio
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --socket=pulseaudio
+  - --socket=session-bus
+  
+  # Hardware access for Steam Deck
+  - --device=dri
+  - --device=input
+  - --device=all
+  
+  # File system access
+  - --socket=gpg-agent
+  - --filesystem=home
+  - --filesystem=xdg-download
+  - --filesystem=xdg-pictures
+  - --filesystem=xdg-videos
+  - --filesystem=xdg-music
+  - --filesystem=xdg-documents
+  - --filesystem=host
+  
+  # Steam Deck specific
+  - --socket=ssh-auth
+  - --socket=pcsc
+  - --socket=cups
+  
+  # Environment variables for Steam Deck
+  - --env=QT_QPA_PLATFORM=xcb
+  - --env=SDL_VIDEODRIVER=x11
+  - --env=DISPLAY=:0
+  - --env=XDG_RUNTIME_DIR=/run/user/1000
+  - --env=PULSE_RUNTIME_PATH=/run/user/1000/pulse
+  - --env=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus
+  - --env=SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD=1
+  - --env=SDL_GAMECONTROLLER_USE_BUTTON_LABELS=0
+  - --env=SDL_JOYSTICK_HIDAPI=1
+  - --env=SDL_JOYSTICK_HIDAPI_STEAM=1
+  - --env=SDL_JOYSTICK_HIDAPI_STEAM_VIRTUAL_GAMEPAD=1
+
+modules:
+  - name: moonlight-common-c
+    buildsystem: cmake
+    build-options:
+      strip: false
+    sources:
+      - type: git
+        url: https://github.com/moonlight-stream/moonlight-common-c.git
+        tag: v4.7.0
+    cleanup:
+      - /include
+      - /lib
+      - /share
+
+  - name: qmdnsengine
+    buildsystem: cmake
+    build-options:
+      strip: false
+    sources:
+      - type: git
+        url: https://github.com/ksys/qmdnsengine.git
+        tag: v0.200.0
+    cleanup:
+      - /include
+      - /lib
+      - /share
+
+  - name: h264bitstream
+    buildsystem: cmake
+    build-options:
+      strip: false
+    sources:
+      - type: git
+        url: https://github.com/aizvorski/h264bitstream.git
+        tag: v0.2.0
+    cleanup:
+      - /include
+      - /lib
+      - /share
+
+  - name: soundio
+    buildsystem: cmake
+    build-options:
+      strip: false
+    sources:
+      - type: git
+        url: https://github.com/andrewrk/libsoundio.git
+        tag: 1.1.0
+    cleanup:
+      - /include
+      - /lib
+      - /share
+
+  - name: moonlight-qt
+    buildsystem: qmake
+    build-options:
+      strip: false
+    sources:
+      - type: git
+        url: https://github.com/moonlight-stream/moonlight-qt.git
+        tag: v6.1.0
+    modules:
+      - name: moonlight-qt-build
+        buildsystem: simple
+        build-commands:
+          - qmake ../moonlight-qt.pro CONFIG+=release PREFIX=/app
+          - make -j$(nproc)
+          - make install
+        sources:
+          - type: dir
+            path: .
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+      - /share/doc
+      - /share/man
+
+  - name: moonlight-desktop
+    buildsystem: simple
+    build-commands:
+      - install -D com.moonlight_stream.Moonlight.desktop /app/share/applications/
+      - install -D moonlight.svg /app/share/icons/hicolor/scalable/apps/
+      - install -D com.moonlight_stream.Moonlight.appdata.xml /app/share/metainfo/
+    sources:
+      - type: dir
+        path: app/deploy/linux
+      - type: file
+        path: app/res/moonlight.svg

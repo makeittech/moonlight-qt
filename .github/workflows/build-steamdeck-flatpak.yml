@@ -53,7 +53,7 @@ jobs:
     
     - name: Rename artifact
       run: |
-        mv ${{ matrix.output }}.flatpak ${{ matrix.output }}-${{ steps.version.outputs.version }}.flatpak
+        mv moonlight-steamdeck.flatpak moonlight-steamdeck-${{ steps.version.outputs.version }}.flatpak
     
     - name: Create release notes
       run: |
@@ -71,11 +71,11 @@ jobs:
         
         ### Method 1: Via Terminal
         \`\`\`bash
-        flatpak install ${{ matrix.output }}-${{ steps.version.outputs.version }}.flatpak
+        flatpak install moonlight-steamdeck-${{ steps.version.outputs.version }}.flatpak
         \`\`\`
         
         ### Method 2: Via Discover App
-        1. Copy \`${{ matrix.output }}-${{ steps.version.outputs.version }}.flatpak\` to your Steam Deck
+        1. Copy \`moonlight-steamdeck-${{ steps.version.outputs.version }}.flatpak\` to your Steam Deck
         2. Open Discover app
         3. Click "Install" on the Flatpak file
         
@@ -117,10 +117,10 @@ jobs:
     - name: Upload Flatpak artifact
       uses: actions/upload-artifact@v4
       with:
-        name: ${{ matrix.output }}-${{ steps.version.outputs.version }}
-        path: |
-          ${{ matrix.output }}-${{ steps.version.outputs.version }}.flatpak
-          RELEASE_NOTES_${{ steps.version.outputs.version }}.md
+        name: moonlight-steamdeck-${{ steps.version.outputs.version }}
+                  path: |
+            moonlight-steamdeck-${{ steps.version.outputs.version }}.flatpak
+            RELEASE_NOTES_${{ steps.version.outputs.version }}.md
         retention-days: 30
     
     - name: Create Release (on tag)

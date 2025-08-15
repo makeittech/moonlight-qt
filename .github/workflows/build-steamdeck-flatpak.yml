@@ -1,0 +1,138 @@
+name: Build Steam Deck Flatpak
+
+on:
+  push:
+    tags:
+      - 'v*'
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Custom version (optional)'
+        required: false
+        default: ''
+
+jobs:
+  build-flatpak:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - name: Steam Deck Optimized
+            manifest: moonlight-steamdeck.yml
+            output: moonlight-steamdeck
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Full history for versioning
+    
+    - name: Setup Flatpak
+      uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+      with:
+        bundle-name: ${{ matrix.output }}
+        cache-key: flatpak-builder-${{ matrix.output }}-${{ hashFiles(matrix.manifest) }}
+        manifest-path: ${{ matrix.manifest }}
+    
+    - name: Get version info
+      id: version
+      run: |
+        if [ "${{ github.event.inputs.version }}" != "" ]; then
+          VERSION="${{ github.event.inputs.version }}"
+        elif [[ $GITHUB_REF == refs/tags/* ]]; then
+          VERSION="${GITHUB_REF#refs/tags/}"
+        else
+          VERSION="$(git describe --tags --abbrev=0 2>/dev/null || echo 'v6.1.0')-$(git rev-parse --short HEAD)-$(date +%Y%m%d)"
+        fi
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "VERSION=$VERSION" >> $GITHUB_ENV
+    
+    - name: Rename artifact
+      run: |
+        mv ${{ matrix.output }}.flatpak ${{ matrix.output }}-${{ steps.version.outputs.version }}.flatpak
+    
+    - name: Create release notes
+      run: |
+        cat > "RELEASE_NOTES_${{ steps.version.outputs.version }}.md" << EOF
+        # Moonlight Steam Deck Flatpak v${{ steps.version.outputs.version }}
+        
+        ## Release Information
+        - **Version**: ${{ steps.version.outputs.version }}
+        - **Build Date**: $(date)
+        - **Git Commit**: $(git rev-parse --short HEAD)
+        - **Git Tag**: $(git describe --tags --abbrev=0 2>/dev/null || echo "none")
+        - **Build Type**: Steam Deck Optimized
+        
+        ## Installation Instructions
+        
+        ### Method 1: Via Terminal
+        \`\`\`bash
+        flatpak install ${{ matrix.output }}-${{ steps.version.outputs.version }}.flatpak
+        \`\`\`
+        
+        ### Method 2: Via Discover App
+        1. Copy \`${{ matrix.output }}-${{ steps.version.outputs.version }}.flatpak\` to your Steam Deck
+        2. Open Discover app
+        3. Click "Install" on the Flatpak file
+        
+        ### Method 3: Add to Steam
+        1. Open Steam in Desktop Mode
+        2. Go to Games → Add a Non-Steam Game to My Library
+        3. Browse to \`/usr/bin/flatpak\`
+        4. Set launch options to: \`run com.moonlight_stream.Moonlight\`
+        
+        ## Steam Deck Optimizations
+        - Enhanced gamepad support with Steam Deck controllers
+        - Full hardware access for optimal performance
+        - Steam integration for virtual gamepad support
+        - Optimized for Steam Deck's display and audio systems
+        
+        ## Features
+        - Game streaming from NVIDIA GeForce Experience or Sunshine
+        - Low latency streaming optimized for gaming
+        - Full controller support
+        - 4K HDR streaming support
+        - Audio streaming with 5.1/7.1 surround sound
+        
+        ## System Requirements
+        - Steam Deck (or compatible Linux system)
+        - Network connection to host PC
+        - Host PC running GeForce Experience or Sunshine
+        
+        ## Troubleshooting
+        If you encounter issues:
+        1. Ensure your host PC is running GeForce Experience or Sunshine
+        2. Check network connectivity between devices
+        3. Verify firewall settings allow Moonlight traffic
+        4. Try running in Desktop Mode if Game Mode has issues
+        
+        ## Support
+        For support, visit: https://github.com/moonlight-stream/moonlight-qt
+        EOF
+    
+    - name: Upload Flatpak artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ matrix.output }}-${{ steps.version.outputs.version }}
+        path: |
+          ${{ matrix.output }}-${{ steps.version.outputs.version }}.flatpak
+          RELEASE_NOTES_${{ steps.version.outputs.version }}.md
+        retention-days: 30
+    
+    - name: Create Release (on tag)
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          ${{ matrix.output }}-${{ steps.version.outputs.version }}.flatpak
+          RELEASE_NOTES_${{ steps.version.outputs.version }}.md
+        body_path: RELEASE_NOTES_${{ steps.version.outputs.version }}.md
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

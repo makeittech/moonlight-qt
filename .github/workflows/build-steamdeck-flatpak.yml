@@ -33,7 +33,7 @@ jobs:
         echo "Files in .github/workflows:"
         ls -la .github/workflows/
         echo "Manifest file exists:"
-        ls -la moonlight-steamdeck.yml
+        ls -la moonlight-steamdeck.yml || echo "Manifest file not found"
     
     - name: Setup Flatpak
       uses: flatpak/flatpak-github-actions/flatpak-builder@v6

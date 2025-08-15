@@ -33,12 +33,10 @@ jobs:
         fetch-depth: 0  # Full history for versioning
     
     - name: Setup Flatpak
-      uses: flatpak/flatpak-github-actions/flatpak-builder@v7
+      uses: flatpak/flatpak-github-actions/flatpak-builder@v8
       with:
-        manifest-path: ${{ matrix.manifest }}
-        bundle: ${{ matrix.output }}
-        cache-key: flatpak-builder-${{ matrix.output }}-${{ hashFiles(matrix.manifest) }}
-        arch: x86_64
+        manifest-path: moonlight-steamdeck.yml
+        bundle: moonlight-steamdeck
     
     - name: Get version info
       id: version

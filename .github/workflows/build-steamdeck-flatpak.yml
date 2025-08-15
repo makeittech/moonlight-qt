@@ -5,10 +5,10 @@ on:
     tags:
       - 'v*'
     branches:
-      - main
+      - master
   pull_request:
     branches:
-      - main
+      - master
   workflow_dispatch:
     inputs:
       version:
@@ -33,11 +33,12 @@ jobs:
         fetch-depth: 0  # Full history for versioning
     
     - name: Setup Flatpak
-      uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+      uses: flatpak/flatpak-github-actions/flatpak-builder@v7
       with:
+        manifest-path: ${{ matrix.manifest }}
         bundle: ${{ matrix.output }}
         cache-key: flatpak-builder-${{ matrix.output }}-${{ hashFiles(matrix.manifest) }}
-        manifest-path: ${{ matrix.manifest }}
+        arch: x86_64
     
     - name: Get version info
       id: version

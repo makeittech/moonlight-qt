@@ -35,7 +35,7 @@ jobs:
     - name: Setup Flatpak
       uses: flatpak/flatpak-github-actions/flatpak-builder@v6
       with:
-        bundle-name: ${{ matrix.output }}
+        bundle: ${{ matrix.output }}
         cache-key: flatpak-builder-${{ matrix.output }}-${{ hashFiles(matrix.manifest) }}
         manifest-path: ${{ matrix.manifest }}
     

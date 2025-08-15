@@ -25,12 +25,23 @@ jobs:
       with:
         fetch-depth: 0  # Full history for versioning
     
+    - name: Debug - List files
+      run: |
+        echo "Current directory: $(pwd)"
+        echo "Files in current directory:"
+        ls -la
+        echo "Files in .github/workflows:"
+        ls -la .github/workflows/
+        echo "Manifest file exists:"
+        ls -la moonlight-steamdeck.yml
+    
     - name: Setup Flatpak
-      uses: flatpak/flatpak-github-actions/flatpak-builder@v7
+      uses: flatpak/flatpak-github-actions/flatpak-builder@v6
       with:
         manifest-path: moonlight-steamdeck.yml
         bundle: moonlight-steamdeck
         cache-key: flatpak-builder-moonlight-steamdeck-${{ hashFiles('moonlight-steamdeck.yml') }}
+        verbose: true
     
     - name: Get version info
       id: version

@@ -33,7 +33,7 @@ jobs:
         fetch-depth: 0  # Full history for versioning
     
     - name: Setup Flatpak
-      uses: flatpak/flatpak-github-actions/flatpak-builder@v8
+      uses: flatpak/flatpak-github-actions/flatpak-builder@v6
       with:
         manifest-path: moonlight-steamdeck.yml
         bundle: moonlight-steamdeck

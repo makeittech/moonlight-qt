@@ -97,3 +97,4 @@ Check out our [website](https://moonlight-stream.org) for project links and info
 # Test build trigger
 # Test build with correct action version
 # Test build with correct action version
+# Test: Fixed matrix.output references

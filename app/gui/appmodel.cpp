@@ -44,6 +44,9 @@ Session* AppModel::createSessionForApp(int appIndex)
     Q_ASSERT(appIndex < m_VisibleApps.count());
     NvApp app = m_VisibleApps.at(appIndex);
 
+    // Track this as the last used host
+    m_ComputerManager->setLastUsedHost(m_Computer->uuid);
+
     return new Session(m_Computer, app);
 }
 

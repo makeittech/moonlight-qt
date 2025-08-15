@@ -1724,6 +1724,22 @@ Flickable {
                 }
 
                 CheckBox {
+                    id: autoConnectToLastHost
+                    width: parent.width
+                    text: qsTr("Auto-connect to last used host on launch")
+                    font.pointSize: 12
+                    checked: StreamingPreferences.autoConnectToLastHost
+                    onCheckedChanged: {
+                        StreamingPreferences.autoConnectToLastHost = checked
+                    }
+
+                    ToolTip.delay: 1000
+                    ToolTip.timeout: 5000
+                    ToolTip.visible: hovered
+                    ToolTip.text: qsTr("Automatically connect to the last host you streamed from when Moonlight launches.")
+                }
+
+                CheckBox {
                     id: detectNetworkBlocking
                     width: parent.width
                     text: qsTr("Automatically detect blocked connections (Recommended)")

@@ -108,23 +108,15 @@ modules:
       - /lib
       - /share
 
-  - name: openh264
-    buildsystem: simple
-    build-commands:
-      - mkdir -p /app/lib
-      - curl -L -o /app/lib/libopenh264.so.6 https://github.com/cisco/openh264/releases/download/v2.2.0/libopenh264-2.2.0-linux64.6.so.bz2
-      - bunzip2 /app/lib/libopenh264.so.6.bz2
-      - ln -sf libopenh264.so.6 /app/lib/libopenh264.so
-    sources:
-      - type: file
-        url: https://github.com/cisco/openh264/releases/download/v2.2.0/libopenh264-2.2.0-linux64.6.so.bz2
-        sha256: 32fde14342bb2e8822c5b6c53d9376d8c696c0e30664f9f4f11f95696aa7d8b2
+
 
   - name: moonlight-qt
     buildsystem: simple
     build-commands:
       - sed -i 's/info\.info\.kmsdrm\.drm_fd/0/g' app/streaming/video/ffmpeg-renderers/drm.cpp
       - sed -i 's/info\.info\.kmsdrm\.drm_fd/0/g' app/streaming/video/ffmpeg-renderers/vaapi.cpp
+      - export FFMPEG_EXTRA_LIBS="-lopenh264"
+      - export DISABLE_OPENH264_DOWNLOAD=1
       - qmake moonlight-qt.pro CONFIG+=release PREFIX=/app
       - make -j$(nproc)
       - make install

@@ -34,8 +34,12 @@ jobs:
         # Configure Flatpak for user installation
         flatpak --user remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
         
-        # Update remote list
+        # Update remote list and refresh
         flatpak --user remote-list
+        flatpak --user remote-info flathub
+        
+        # Refresh the remote to ensure it's properly configured
+        flatpak --user remote-refresh flathub
         
         # Check available runtimes
         echo "Checking available KDE Platform runtimes..."
@@ -54,11 +58,10 @@ jobs:
         # Create build directory
         mkdir -p build-test
         
-        # Build the Flatpak
+        # Build the Flatpak (dependencies already installed)
         flatpak-builder \
           --force-clean \
           --user \
-          --install-deps-from=flathub \
           --repo=repo-test \
           build-test \
           moonlight-steamdeck.yml

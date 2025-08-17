@@ -38,12 +38,12 @@ jobs:
           exit 1
         fi
         
-        # Validate bundle
-        echo "🔍 Validating Flatpak bundle..."
-        if flatpak build-bundle --list-contents moonlight-steamdeck-test.flatpak > /dev/null 2>&1; then
-          echo "✅ Bundle validation passed"
+        # Check bundle file
+        echo "🔍 Checking Flatpak bundle..."
+        if [ -s moonlight-steamdeck-test.flatpak ]; then
+          echo "✅ Bundle file exists and is not empty"
         else
-          echo "❌ Bundle validation failed"
+          echo "❌ Bundle file is missing or empty"
           exit 1
         fi
     

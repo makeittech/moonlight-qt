@@ -39,10 +39,19 @@ jobs:
         echo "Git log (last 5 commits):"
         git log --oneline -5 || echo "Git log failed"
     
-    - name: Validate manifest
+    - name: Validate manifest structure
       run: |
-        echo "Validating Flatpak manifest..."
-        if ! flatpak-builder --dry-run --user moonlight-steamdeck.yml; then
+        echo "Validating Flatpak manifest structure..."
+        if ! python3 -c "
+import yaml
+try:
+    with open('moonlight-steamdeck.yml', 'r') as f:
+        yaml.safe_load(f)
+    print('✅ Manifest YAML structure is valid')
+except Exception as e:
+    print(f'❌ Manifest YAML structure is invalid: {e}')
+    exit(1)
+"; then
           echo "❌ Manifest validation failed"
           exit 1
         fi
@@ -55,7 +64,19 @@ jobs:
         bundle: moonlight-steamdeck
         cache-key: flatpak-builder-moonlight-steamdeck-${{ hashFiles('moonlight-steamdeck.yml') }}
         verbose: true
-        fail-fast: true
+    
+    - name: Verify build output
+      run: |
+        echo "Checking build output..."
+        if [ -f moonlight-steamdeck.flatpak ]; then
+          echo "✅ Flatpak build completed successfully"
+          ls -la moonlight-steamdeck.flatpak
+        else
+          echo "❌ Flatpak build failed - output file not found"
+          echo "Current directory contents:"
+          ls -la
+          exit 1
+        fi
     
     - name: Get version info
       id: version

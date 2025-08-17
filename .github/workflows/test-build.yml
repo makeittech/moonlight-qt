@@ -16,12 +16,46 @@ jobs:
       with:
         fetch-depth: 0
     
-    - name: Setup Flatpak
-      uses: flatpak/flatpak-github-actions/flatpak-builder@v6
-      with:
-        bundle: moonlight-steamdeck-test
-        cache-key: flatpak-builder-test-${{ hashFiles('moonlight-steamdeck.yml') }}
-        manifest-path: moonlight-steamdeck.yml
+    - name: Setup Flatpak environment
+      run: |
+        echo "Setting up Flatpak environment..."
+        sudo apt-get update
+        sudo apt-get install -y flatpak flatpak-builder
+        
+        # Add Flathub repository
+        flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+        
+        # Install required runtimes
+        flatpak install --user org.kde.Platform//6.5 org.kde.Sdk//6.5 -y || true
+        
+        echo "Flatpak setup complete"
+    
+    - name: Build test Flatpak
+      run: |
+        echo "Building test Flatpak package..."
+        
+        # Create build directory
+        mkdir -p build-test
+        
+        # Build the Flatpak
+        flatpak-builder \
+          --force-clean \
+          --user \
+          --install-deps-from=flathub \
+          --repo=repo-test \
+          build-test \
+          moonlight-steamdeck.yml
+        
+        echo "Test build completed"
+    
+    - name: Create test bundle
+      run: |
+        echo "Creating test Flatpak bundle..."
+        
+        # Create bundle
+        flatpak build-bundle repo-test moonlight-steamdeck-test.flatpak com.moonlight_stream.Moonlight
+        
+        echo "Test bundle created"
     
     - name: Test build completion
       run: |

@@ -33,13 +33,46 @@ jobs:
         echo "Manifest file exists:"
         ls -la moonlight-steamdeck.yml || echo "Manifest file not found"
     
-    - name: Setup Flatpak
-      uses: flatpak/flatpak-github-actions/flatpak-builder@v6
-      with:
-        manifest-path: moonlight-steamdeck.yml
-        bundle: moonlight-steamdeck
-        cache-key: flatpak-builder-moonlight-steamdeck-${{ hashFiles('moonlight-steamdeck.yml') }}
-        verbose: true
+    - name: Setup Flatpak environment
+      run: |
+        echo "Setting up Flatpak environment..."
+        sudo apt-get update
+        sudo apt-get install -y flatpak flatpak-builder
+        
+        # Add Flathub repository
+        flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+        
+        # Install required runtimes
+        flatpak install --user org.kde.Platform//6.5 org.kde.Sdk//6.5 -y || true
+        
+        echo "Flatpak setup complete"
+    
+    - name: Build Flatpak
+      run: |
+        echo "Building Flatpak package..."
+        
+        # Create build directory
+        mkdir -p build
+        
+        # Build the Flatpak
+        flatpak-builder \
+          --force-clean \
+          --user \
+          --install-deps-from=flathub \
+          --repo=repo \
+          build \
+          moonlight-steamdeck.yml
+        
+        echo "Build completed"
+    
+    - name: Create bundle
+      run: |
+        echo "Creating Flatpak bundle..."
+        
+        # Create bundle
+        flatpak build-bundle repo moonlight-steamdeck.flatpak com.moonlight_stream.Moonlight
+        
+        echo "Bundle created"
     
     - name: Get version info
       id: version

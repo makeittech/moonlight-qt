@@ -125,7 +125,7 @@ modules:
     sources:
       - type: git
         url: https://github.com/moonlight-stream/moonlight-qt.git
-        tag: v6.1.0
+        branch: master
     cleanup:
       - /include
       - /lib/pkgconfig
@@ -141,4 +141,4 @@ modules:
     sources:
       - type: git
         url: https://github.com/moonlight-stream/moonlight-qt.git
-        tag: v6.1.0
+        branch: master

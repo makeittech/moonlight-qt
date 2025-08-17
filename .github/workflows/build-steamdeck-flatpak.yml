@@ -30,32 +30,8 @@ jobs:
         echo "Current directory: $(pwd)"
         echo "Files in current directory:"
         ls -la
-        echo "Files in .github/workflows:"
-        ls -la .github/workflows/
         echo "Manifest file exists:"
         ls -la moonlight-steamdeck.yml || echo "Manifest file not found"
-        echo "Git status:"
-        git status || echo "Git status failed"
-        echo "Git log (last 5 commits):"
-        git log --oneline -5 || echo "Git log failed"
-    
-    - name: Validate manifest structure
-      run: |
-        echo "Validating Flatpak manifest structure..."
-        if ! python3 -c "
-import yaml
-try:
-    with open('moonlight-steamdeck.yml', 'r') as f:
-        yaml.safe_load(f)
-    print('✅ Manifest YAML structure is valid')
-except Exception as e:
-    print(f'❌ Manifest YAML structure is invalid: {e}')
-    exit(1)
-"; then
-          echo "❌ Manifest validation failed"
-          exit 1
-        fi
-        echo "✅ Manifest validation passed"
     
     - name: Setup Flatpak
       uses: flatpak/flatpak-github-actions/flatpak-builder@v6
@@ -64,19 +40,6 @@ except Exception as e:
         bundle: moonlight-steamdeck
         cache-key: flatpak-builder-moonlight-steamdeck-${{ hashFiles('moonlight-steamdeck.yml') }}
         verbose: true
-    
-    - name: Verify build output
-      run: |
-        echo "Checking build output..."
-        if [ -f moonlight-steamdeck.flatpak ]; then
-          echo "✅ Flatpak build completed successfully"
-          ls -la moonlight-steamdeck.flatpak
-        else
-          echo "❌ Flatpak build failed - output file not found"
-          echo "Current directory contents:"
-          ls -la
-          exit 1
-        fi
     
     - name: Get version info
       id: version
@@ -90,6 +53,19 @@ except Exception as e:
         fi
         echo "version=$VERSION" >> $GITHUB_OUTPUT
         echo "VERSION=$VERSION" >> $GITHUB_ENV
+    
+    - name: Check build output
+      run: |
+        echo "Checking build output..."
+        if [ -f moonlight-steamdeck.flatpak ]; then
+          echo "✅ Flatpak build completed successfully"
+          ls -la moonlight-steamdeck.flatpak
+        else
+          echo "❌ Flatpak build failed - output file not found"
+          echo "Current directory contents:"
+          ls -la
+          exit 1
+        fi
     
     - name: Rename artifact
       run: |

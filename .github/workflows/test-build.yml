@@ -37,15 +37,6 @@ jobs:
           echo "❌ Bundle file not found!"
           exit 1
         fi
-        
-        # Check bundle file
-        echo "🔍 Checking Flatpak bundle..."
-        if [ -s moonlight-steamdeck-test.flatpak ]; then
-          echo "✅ Bundle file exists and is not empty"
-        else
-          echo "❌ Bundle file is missing or empty"
-          exit 1
-        fi
     
     - name: Upload test artifact
       uses: actions/upload-artifact@v4

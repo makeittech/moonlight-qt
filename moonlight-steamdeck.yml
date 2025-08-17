@@ -1,6 +1,6 @@
 app-id: com.moonlight_stream.Moonlight
 runtime: org.kde.Platform
-runtime-version: '6.4'
+runtime-version: '6.5'
 sdk: org.kde.Sdk
 sdk-extensions:
   - org.freedesktop.Platform.GL.default
@@ -135,11 +135,10 @@ modules:
   - name: moonlight-desktop
     buildsystem: simple
     build-commands:
-      - install -D com.moonlight_stream.Moonlight.desktop /app/share/applications/
-      - install -D moonlight.svg /app/share/icons/hicolor/scalable/apps/
-      - install -D com.moonlight_stream.Moonlight.appdata.xml /app/share/metainfo/
+      - install -D app/deploy/linux/com.moonlight_stream.Moonlight.desktop /app/share/applications/
+      - install -D app/res/moonlight.svg /app/share/icons/hicolor/scalable/apps/
+      - install -D app/deploy/linux/com.moonlight_stream.Moonlight.appdata.xml /app/share/metainfo/
     sources:
-      - type: dir
-        path: app/deploy/linux
-      - type: file
-        path: app/res/moonlight.svg
+      - type: git
+        url: https://github.com/moonlight-stream/moonlight-qt.git
+        tag: v6.1.0

@@ -81,7 +81,7 @@ setup_runtimes() {
     # Install required runtimes (skip if system bus unavailable)
     print_status "Installing required runtimes..."
     if [ -S /run/dbus/system_bus_socket ] 2>/dev/null; then
-        flatpak install --user org.freedesktop.Platform//23.08 org.freedesktop.Sdk//23.08 || true
+        flatpak install --user org.kde.Platform//6.5 org.kde.Sdk//6.5 || true
     else
         print_warning "System bus unavailable, skipping runtime installation"
         print_warning "This may cause build issues. Consider running in a proper desktop environment."

@@ -4,7 +4,8 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - cursor/build-flatpak-for-steam-deck-2dfa
+      - master
+      - main
 
 jobs:
   test-build:
@@ -27,6 +28,24 @@ jobs:
         echo "✅ Build test completed successfully!"
         echo "📦 Flatpak bundle created: moonlight-steamdeck-test.flatpak"
         echo "🎮 Ready for Steam Deck installation"
+        
+        # Check file size
+        if [ -f moonlight-steamdeck-test.flatpak ]; then
+          size=$(du -h moonlight-steamdeck-test.flatpak | cut -f1)
+          echo "📊 Bundle size: $size"
+        else
+          echo "❌ Bundle file not found!"
+          exit 1
+        fi
+        
+        # Validate bundle
+        echo "🔍 Validating Flatpak bundle..."
+        if flatpak build-bundle --list-contents moonlight-steamdeck-test.flatpak > /dev/null 2>&1; then
+          echo "✅ Bundle validation passed"
+        else
+          echo "❌ Bundle validation failed"
+          exit 1
+        fi
     
     - name: Upload test artifact
       uses: actions/upload-artifact@v4

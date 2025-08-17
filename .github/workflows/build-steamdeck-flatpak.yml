@@ -34,6 +34,19 @@ jobs:
         ls -la .github/workflows/
         echo "Manifest file exists:"
         ls -la moonlight-steamdeck.yml || echo "Manifest file not found"
+        echo "Git status:"
+        git status || echo "Git status failed"
+        echo "Git log (last 5 commits):"
+        git log --oneline -5 || echo "Git log failed"
+    
+    - name: Validate manifest
+      run: |
+        echo "Validating Flatpak manifest..."
+        if ! flatpak-builder --dry-run --user moonlight-steamdeck.yml; then
+          echo "❌ Manifest validation failed"
+          exit 1
+        fi
+        echo "✅ Manifest validation passed"
     
     - name: Setup Flatpak
       uses: flatpak/flatpak-github-actions/flatpak-builder@v6
@@ -42,6 +55,7 @@ jobs:
         bundle: moonlight-steamdeck
         cache-key: flatpak-builder-moonlight-steamdeck-${{ hashFiles('moonlight-steamdeck.yml') }}
         verbose: true
+        fail-fast: true
     
     - name: Get version info
       id: version
@@ -123,9 +137,9 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: moonlight-steamdeck-${{ steps.version.outputs.version }}
-                  path: |
-            moonlight-steamdeck-${{ steps.version.outputs.version }}.flatpak
-            RELEASE_NOTES_${{ steps.version.outputs.version }}.md
+        path: |
+          moonlight-steamdeck-${{ steps.version.outputs.version }}.flatpak
+          RELEASE_NOTES_${{ steps.version.outputs.version }}.md
         retention-days: 30
     
     - name: Create Release (on tag)
@@ -133,7 +147,7 @@ jobs:
       uses: softprops/action-gh-release@v1
       with:
         files: |
-          ${{ matrix.output }}-${{ steps.version.outputs.version }}.flatpak
+          moonlight-steamdeck-${{ steps.version.outputs.version }}.flatpak
           RELEASE_NOTES_${{ steps.version.outputs.version }}.md
         body_path: RELEASE_NOTES_${{ steps.version.outputs.version }}.md
         draft: false

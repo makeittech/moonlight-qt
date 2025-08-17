@@ -34,8 +34,16 @@ jobs:
         # Configure Flatpak for user installation
         flatpak --user remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
         
-        # Install required runtimes for user
-        flatpak --user install --assumeyes org.kde.Platform//6.5 org.kde.Sdk//6.5 || true
+        # Update remote list
+        flatpak --user remote-list
+        
+        # Check available runtimes
+        echo "Checking available KDE Platform runtimes..."
+        flatpak --user remote-ls flathub | grep org.kde.Platform || echo "No KDE Platform runtimes found"
+        flatpak --user remote-ls flathub | grep org.kde.Sdk || echo "No KDE SDK runtimes found"
+        
+        # Install required runtimes for user (using available versions)
+        flatpak --user install --assumeyes org.kde.Platform//23.08 org.kde.Sdk//23.08 || true
         
         echo "Flatpak setup complete"
     

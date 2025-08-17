@@ -10,6 +10,10 @@ on:
 jobs:
   test-build:
     runs-on: ubuntu-latest
+    env:
+      XDG_DATA_HOME: ${{ github.workspace }}/.local/share
+      XDG_CONFIG_HOME: ${{ github.workspace }}/.config
+      XDG_CACHE_HOME: ${{ github.workspace }}/.cache
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -22,11 +26,16 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y flatpak flatpak-builder
         
-        # Add Flathub repository
-        flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+        # Set up Flatpak environment variables
+        export XDG_DATA_HOME="$HOME/.local/share"
+        export XDG_CONFIG_HOME="$HOME/.config"
+        export XDG_CACHE_HOME="$HOME/.cache"
         
-        # Install required runtimes
-        flatpak install --user org.kde.Platform//6.5 org.kde.Sdk//6.5 -y || true
+        # Configure Flatpak for user installation
+        flatpak --user remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+        
+        # Install required runtimes for user
+        flatpak --user install --assumeyes org.kde.Platform//6.5 org.kde.Sdk//6.5 || true
         
         echo "Flatpak setup complete"
     

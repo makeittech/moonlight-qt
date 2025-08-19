@@ -1,0 +1,82 @@
+# Cursor Rules for Moonlight Steam Deck Project
+
+## 🚀 **User Interaction Guidelines**
+
+### **Minimize User Interaction**
+- **NEVER expect actions to be done from user** - Always take initiative to complete tasks
+- **User interaction should be minimal** and done only if some crucial decision should be made
+- **Automate everything possible** - Don't ask for confirmation unless absolutely necessary
+- **Proactively fix issues** - If you see a problem, fix it immediately
+- **Complete tasks end-to-end** - Don't stop halfway and ask for next steps
+
+### **GitHub Actions and CI/CD**
+- **Always test workflows** by creating commits and pushing to trigger builds
+- **Fix build issues immediately** - Don't wait for user to identify problems
+- **Create comprehensive PRs** with detailed descriptions and testing instructions
+- **Validate all changes** before committing (YAML syntax, shell script syntax, etc.)
+- **Add proper error handling** and validation to all build steps
+
+### **Code Quality**
+- **Validate syntax** for all configuration files (YAML, shell scripts, etc.)
+- **Add comprehensive error handling** to all scripts and workflows
+- **Include proper documentation** for all changes
+- **Test functionality** before committing changes
+- **Use descriptive commit messages** that explain what and why
+
+### **Build System**
+- **Ensure consistency** across all build configurations
+- **Fix dependency issues** proactively
+- **Add validation steps** to catch errors early
+- **Provide clear error messages** when things fail
+- **Include debugging information** in build logs
+
+### **Project Structure**
+- **Maintain organized file structure**
+- **Keep documentation up to date**
+- **Ensure all scripts are executable**
+- **Validate all configuration files**
+- **Test all build paths**
+
+## 🎯 **Workflow Guidelines**
+
+### **When Working on Build Issues:**
+1. **Identify the problem** through analysis and testing
+2. **Fix the root cause** immediately
+3. **Add validation** to prevent future issues
+4. **Test the fix** by triggering builds
+5. **Document the solution** comprehensively
+6. **Create PR with full context** and testing instructions
+
+### **When Creating Pull Requests:**
+1. **Fix all issues** before creating PR
+2. **Test thoroughly** with multiple scenarios
+3. **Provide complete documentation**
+4. **Include testing instructions**
+5. **Add validation steps**
+6. **Ensure production readiness**
+
+### **When Debugging:**
+1. **Add comprehensive logging**
+2. **Validate all inputs**
+3. **Check all dependencies**
+4. **Test edge cases**
+5. **Provide clear error messages**
+6. **Fix issues at the source**
+
+## 📋 **Quality Standards**
+
+- **All YAML files must be valid** - Use Python yaml.safe_load() for validation
+- **All shell scripts must be valid** - Use bash -n for syntax checking
+- **All workflows must trigger properly** - Test on feature branches
+- **All builds must have error handling** - No silent failures
+- **All changes must be documented** - Include context and reasoning
+- **All fixes must be tested** - Validate before committing
+
+## 🚨 **Critical Rules**
+
+1. **NEVER ask user to do something you can do yourself**
+2. **ALWAYS validate syntax before committing**
+3. **ALWAYS test workflows by triggering builds**
+4. **ALWAYS provide comprehensive error handling**
+5. **ALWAYS document changes thoroughly**
+6. **ALWAYS fix issues at the source, not just symptoms**

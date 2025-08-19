@@ -50,11 +50,24 @@ jobs:
         # Install required runtimes for user (using available versions)
         flatpak --user install --assumeyes org.kde.Platform//23.08 org.kde.Sdk//23.08 || true
         
+        # Verify installation
+        echo "Verifying Flatpak installation..."
+        flatpak --user list | grep org.kde.Platform || echo "Warning: KDE Platform not found in user installation"
+        flatpak --user list | grep org.kde.Sdk || echo "Warning: KDE SDK not found in user installation"
+        
         echo "Flatpak setup complete"
     
     - name: Build test Flatpak
       run: |
         echo "Building test Flatpak package..."
+        
+        # Validate manifest file exists
+        if [ ! -f "moonlight-steamdeck.yml" ]; then
+          echo "❌ Error: moonlight-steamdeck.yml not found!"
+          exit 1
+        fi
+        
+        echo "✅ Manifest file found: moonlight-steamdeck.yml"
         
         # Create build directory
         mkdir -p build-test
@@ -73,6 +86,12 @@ jobs:
     - name: Create test bundle
       run: |
         echo "Creating test Flatpak bundle..."
+        
+        # Check if repo exists
+        if [ ! -d "repo-test" ]; then
+          echo "❌ Error: repo-test directory not found!"
+          exit 1
+        fi
         
         # Create bundle
         flatpak build-bundle repo-test moonlight-steamdeck-test.flatpak com.moonlight_stream.Moonlight

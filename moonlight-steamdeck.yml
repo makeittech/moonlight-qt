@@ -117,7 +117,7 @@ modules:
       - sed -i 's/info\.info\.kmsdrm\.drm_fd/0/g' app/streaming/video/ffmpeg-renderers/vaapi.cpp
       - export FFMPEG_EXTRA_LIBS="-lopenh264"
       - export DISABLE_OPENH264_DOWNLOAD=1
-      - qmake moonlight-qt.pro CONFIG+=release PREFIX=/app
+      - qmake6 moonlight-qt.pro CONFIG+=release PREFIX=/app
       - make -j$(nproc)
       - make install
     build-options:

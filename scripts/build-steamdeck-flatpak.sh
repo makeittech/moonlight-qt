@@ -116,6 +116,12 @@ build_flatpak() {
     
     print_status "Building Flatpak for version: ${version}"
     
+    # Validate manifest file exists
+    if [ ! -f "moonlight-steamdeck.yml" ]; then
+        print_error "Manifest file moonlight-steamdeck.yml not found!"
+        exit 1
+    fi
+    
     # Clean previous builds
     if [ -d "$build_dir" ]; then
         print_status "Cleaning previous build directory..."
@@ -135,17 +141,35 @@ build_flatpak() {
     
     # Build the Flatpak
     print_status "Building Flatpak package..."
-    flatpak-builder \
+    if ! flatpak-builder \
         --force-clean \
         --user \
         --install-deps-from=flathub \
         --repo="$repo_dir" \
         "$build_dir" \
-        "$build_dir/moonlight-steamdeck.yml"
+        "$build_dir/moonlight-steamdeck.yml"; then
+        print_error "Flatpak build failed!"
+        exit 1
+    fi
+    
+    # Verify repo was created
+    if [ ! -d "$repo_dir" ]; then
+        print_error "Repository directory $repo_dir was not created!"
+        exit 1
+    fi
     
     # Create Flatpak bundle
     print_status "Creating Flatpak bundle..."
-    flatpak build-bundle "$repo_dir" "$output_file" com.moonlight_stream.Moonlight
+    if ! flatpak build-bundle "$repo_dir" "$output_file" com.moonlight_stream.Moonlight; then
+        print_error "Failed to create Flatpak bundle!"
+        exit 1
+    fi
+    
+    # Verify bundle was created
+    if [ ! -f "$output_file" ]; then
+        print_error "Flatpak bundle $output_file was not created!"
+        exit 1
+    fi
     
     print_success "Build complete! Output: $output_file"
     

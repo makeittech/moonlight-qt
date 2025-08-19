@@ -6,6 +6,11 @@ on:
     branches:
       - master
       - main
+      - fix-github-actions-build-validation
+  pull_request:
+    branches:
+      - master
+      - main
 
 jobs:
   test-build:

@@ -5,6 +5,12 @@ on:
   push:
     branches:
       - master
+      - main
+      - fix-github-actions-build-validation
+  pull_request:
+    branches:
+      - master
+      - main
 
 jobs:
   test:
@@ -12,6 +18,8 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@v4
+      with:
+        submodules: recursive
     
     - name: Test step
       run: |
@@ -19,3 +27,30 @@ jobs:
         echo "Current directory: $(pwd)"
         echo "Files:"
         ls -la
+        echo "Branch: ${{ github.ref }}"
+        echo "Event: ${{ github.event_name }}"
+        
+        # Check if manifest exists
+        if [ -f "moonlight-steamdeck.yml" ]; then
+          echo "✅ Manifest file found"
+        else
+          echo "❌ Manifest file not found"
+          exit 1
+        fi
+        
+        # Check if workflows exist
+        if [ -f ".github/workflows/test-build.yml" ]; then
+          echo "✅ Test build workflow found"
+        else
+          echo "❌ Test build workflow not found"
+          exit 1
+        fi
+        
+        if [ -f ".github/workflows/build-steamdeck-flatpak.yml" ]; then
+          echo "✅ Build workflow found"
+        else
+          echo "❌ Build workflow not found"
+          exit 1
+        fi
+        
+        echo "✅ All basic checks passed!"

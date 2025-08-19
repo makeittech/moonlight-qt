@@ -73,7 +73,7 @@ modules:
       strip: false
     sources:
       - type: git
-        url: https://github.com/nitroshare/qmdnsengine.git
+        url: https://github.com/cgutman/qmdnsengine.git
         branch: master
     cleanup:
       - /include

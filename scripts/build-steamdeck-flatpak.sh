@@ -68,6 +68,19 @@ check_dependencies() {
     print_success "All dependencies found"
 }
 
+# Function to initialize submodules
+init_submodules() {
+    print_status "Initializing git submodules..."
+    
+    if [ -f .gitmodules ]; then
+        git submodule update --init --recursive || {
+            print_warning "Failed to initialize submodules, continuing anyway..."
+        }
+    else
+        print_status "No .gitmodules file found, skipping submodule initialization"
+    fi
+}
+
 # Function to setup Flatpak runtimes
 setup_runtimes() {
     print_status "Setting up Flatpak runtimes..."
@@ -81,7 +94,7 @@ setup_runtimes() {
     # Install required runtimes (skip if system bus unavailable)
     print_status "Installing required runtimes..."
     if [ -S /run/dbus/system_bus_socket ] 2>/dev/null; then
-        flatpak install --user org.kde.Platform//6.5 org.kde.Sdk//6.5 || true
+        flatpak install --user org.kde.Platform//23.08 org.kde.Sdk//23.08 || true
     else
         print_warning "System bus unavailable, skipping runtime installation"
         print_warning "This may cause build issues. Consider running in a proper desktop environment."
@@ -213,6 +226,9 @@ main() {
     
     # Check dependencies
     check_dependencies
+    
+    # Initialize submodules
+    init_submodules
     
     # Setup runtimes
     setup_runtimes

@@ -1,18 +1,22 @@
 # Moonlight Steam Deck Flatpak Makefile
 
-.PHONY: help build clean install test release
+.PHONY: help build clean install test release steamdeck
 
 # Default target
 help:
 	@echo "Moonlight Steam Deck Flatpak Build System"
 	@echo ""
 	@echo "Available targets:"
+	@echo "  steamdeck - Simple one-command build (recommended)"
 	@echo "  build     - Build the Steam Deck Flatpak"
 	@echo "  clean     - Clean build artifacts"
 	@echo "  install   - Install dependencies"
 	@echo "  test      - Test the build"
 	@echo "  release   - Create a new release"
 	@echo "  help      - Show this help message"
+	@echo ""
+	@echo "Quick Start:"
+	@echo "  make steamdeck   - Build everything with one command"
 
 # Build the Flatpak
 build:
@@ -63,3 +67,9 @@ prod: clean build
 	@echo "Files created:"
 	@ls -la moonlight-steamdeck-*.flatpak 2>/dev/null || echo "No Flatpak files found"
 	@ls -la RELEASE_NOTES_*.md 2>/dev/null || echo "No release notes found"
+
+# Simple Steam Deck build (one command does everything)
+steamdeck:
+	@echo "Starting simple Steam Deck build..."
+	@chmod +x build-steamdeck.sh
+	./build-steamdeck.sh

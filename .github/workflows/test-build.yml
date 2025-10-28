@@ -40,11 +40,8 @@ jobs:
         # Configure Flatpak for user installation
         flatpak --user remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
         
-        # Update remote list and refresh
+        # Update remote list
         flatpak --user remote-list
-        
-        # Refresh the remote to ensure it's properly configured
-        flatpak --user remote-refresh flathub
         
         # Check available runtimes
         echo "Checking available KDE Platform runtimes..."

@@ -6,16 +6,27 @@ on:
       - 'v*'
     branches:
       - master
-      - fix-github-actions-build-validation
+      - main
+      - 'cursor/**'
+      - 'feature/**'
   pull_request:
     branches:
       - master
+      - main
   workflow_dispatch:
     inputs:
       version:
         description: 'Custom version (optional)'
         required: false
         default: ''
+      create_release:
+        description: 'Create GitHub release'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
 
 jobs:
   build-flatpak:
@@ -158,51 +169,85 @@ jobs:
         - **Git Tag**: $(git describe --tags --abbrev=0 2>/dev/null || echo "none")
         - **Build Type**: Steam Deck Optimized
         
-        ## Installation Instructions
+        ## 🚀 New Features
+        
+        ### Auto-Reconnect
+        - **Automatic reconnection** when connection is lost
+        - **2 minutes of retry attempts** before showing error (24 retries)
+        - **Visual feedback** showing reconnection progress
+        - **Cancel anytime** with Ctrl+Alt+C keyboard shortcut
+        
+        ### Simplified Build Process
+        - One-command build with \`make steamdeck\`
+        - Automatic dependency installation
+        - Clear progress indicators and instructions
+        
+        ## 📦 Installation Instructions
         
         ### Method 1: Via Terminal
         \`\`\`bash
-        flatpak install moonlight-steamdeck-${{ steps.version.outputs.version }}.flatpak
+        flatpak install --user moonlight-steamdeck-${{ steps.version.outputs.version }}.flatpak
         \`\`\`
         
         ### Method 2: Via Discover App
         1. Copy \`moonlight-steamdeck-${{ steps.version.outputs.version }}.flatpak\` to your Steam Deck
         2. Open Discover app
-        3. Click "Install" on the Flatpak file
+        3. Click on the file and select "Install"
         
         ### Method 3: Add to Steam
-        1. Open Steam in Desktop Mode
-        2. Go to Games → Add a Non-Steam Game to My Library
-        3. Browse to \`/usr/bin/flatpak\`
-        4. Set launch options to: \`run com.moonlight_stream.Moonlight\`
+        1. Install using Method 1 or 2
+        2. Open Steam in Desktop Mode
+        3. Go to: Games → Add a Non-Steam Game to My Library
+        4. Browse to \`/usr/bin/flatpak\`
+        5. Set launch options to: \`run com.moonlight_stream.Moonlight\`
         
-        ## Steam Deck Optimizations
+        ## 🎮 Steam Deck Optimizations
         - Enhanced gamepad support with Steam Deck controllers
-        - Full hardware access for optimal performance
-        - Steam integration for virtual gamepad support
+        - Full hardware access (DRI, input devices, audio)
+        - Steam virtual gamepad integration
         - Optimized for Steam Deck's display and audio systems
+        - Low latency input handling
         
-        ## Features
+        ## ✨ Features
+        - **Auto-reconnect for 2 minutes** when connection fails
         - Game streaming from NVIDIA GeForce Experience or Sunshine
         - Low latency streaming optimized for gaming
-        - Full controller support
+        - Full controller support with haptic feedback
         - 4K HDR streaming support
         - Audio streaming with 5.1/7.1 surround sound
+        - Hardware-accelerated video decoding
         
-        ## System Requirements
-        - Steam Deck (or compatible Linux system)
-        - Network connection to host PC
-        - Host PC running GeForce Experience or Sunshine
+        ## 💻 System Requirements
+        - Steam Deck (or compatible Linux system with Flatpak support)
+        - Stable network connection to host PC
+        - Host PC running GeForce Experience (NVIDIA) or Sunshine
+        - Recommended: 5GHz WiFi or Ethernet connection
         
-        ## Troubleshooting
-        If you encounter issues:
-        1. Ensure your host PC is running GeForce Experience or Sunshine
-        2. Check network connectivity between devices
-        3. Verify firewall settings allow Moonlight traffic
-        4. Try running in Desktop Mode if Game Mode has issues
+        ## 🔧 Troubleshooting
         
-        ## Support
-        For support, visit: https://github.com/moonlight-stream/moonlight-qt
+        ### Connection Issues
+        - If disconnected, the app will automatically retry for 2 minutes
+        - Press **Ctrl+Alt+C** to cancel auto-reconnect
+        - Ensure host PC is running and streaming software is active
+        
+        ### Installation Issues
+        - Use \`--user\` flag if system installation fails
+        - Ensure Flatpak is installed: \`sudo apt install flatpak\`
+        - Add Flathub: \`flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo\`
+        
+        ### Performance Issues
+        - Check network connectivity and latency
+        - Verify firewall settings allow Moonlight traffic (ports 47984-47990, 48010)
+        - Try Desktop Mode if Game Mode has issues
+        - Disable VPN if active on either device
+        
+        ## 📚 Documentation
+        - Quick Start Guide: See \`QUICK_START_STEAM_DECK.md\` in repository
+        - Project Repository: https://github.com/moonlight-stream/moonlight-qt
+        - Steam Deck Support: https://help.steampowered.com/
+        
+        ## 🙏 Support
+        For support and bug reports, visit: https://github.com/moonlight-stream/moonlight-qt/issues
         EOF
     
     - name: Upload Flatpak artifact
@@ -214,15 +259,41 @@ jobs:
           RELEASE_NOTES_${{ steps.version.outputs.version }}.md
         retention-days: 30
     
-    - name: Create Release (on tag)
-      if: startsWith(github.ref, 'refs/tags/')
+    - name: Create Release (on tag or manual trigger)
+      if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && github.event.inputs.create_release == 'true')
       uses: softprops/action-gh-release@v1
       with:
+        tag_name: ${{ steps.version.outputs.version }}
+        name: Moonlight Steam Deck v${{ steps.version.outputs.version }}
         files: |
           moonlight-steamdeck-${{ steps.version.outputs.version }}.flatpak
           RELEASE_NOTES_${{ steps.version.outputs.version }}.md
         body_path: RELEASE_NOTES_${{ steps.version.outputs.version }}.md
         draft: false
-        prerelease: false
+        prerelease: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        make_latest: ${{ startsWith(github.ref, 'refs/tags/') }}
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Build Summary
+      run: |
+        echo "## 🎉 Build Complete!" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 📦 Artifact Information" >> $GITHUB_STEP_SUMMARY
+        echo "- **Version**: ${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Filename**: moonlight-steamdeck-${{ steps.version.outputs.version }}.flatpak" >> $GITHUB_STEP_SUMMARY
+        echo "- **Size**: $(du -h moonlight-steamdeck-${{ steps.version.outputs.version }}.flatpak | cut -f1)" >> $GITHUB_STEP_SUMMARY
+        echo "- **Commit**: $(git rev-parse --short HEAD)" >> $GITHUB_STEP_SUMMARY
+        echo "- **Branch**: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 🚀 New Features" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ Auto-reconnect for 2 minutes when connection fails" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ Visual feedback during reconnection attempts" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ Cancel auto-reconnect with Ctrl+Alt+C" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ Steam Deck optimized build" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 📥 Download" >> $GITHUB_STEP_SUMMARY
+        echo "The Flatpak package has been uploaded as an artifact and can be downloaded from the Actions tab." >> $GITHUB_STEP_SUMMARY
+        if [ "${{ startsWith(github.ref, 'refs/tags/') }}" == "true" ]; then
+          echo "A GitHub release has been created automatically." >> $GITHUB_STEP_SUMMARY
+        fi

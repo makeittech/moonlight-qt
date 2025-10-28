@@ -1,9 +1,10 @@
 app-id: com.moonlight_stream.Moonlight
-runtime: org.kde.Platform
-runtime-version: '6.8'
-sdk: org.kde.Sdk
+runtime: org.freedesktop.Platform
+runtime-version: '23.08'
+sdk: org.freedesktop.Sdk
 sdk-extensions:
   - org.freedesktop.Platform.GL.default
+  - org.freedesktop.Sdk.Extension.llvm18
 command: moonlight
 tags:
   - game

@@ -44,18 +44,18 @@ jobs:
         flatpak --user remote-list
         
         # Check available runtimes
-        echo "Checking available KDE Platform runtimes..."
-        flatpak --user remote-ls flathub | grep "org.kde.Platform" | head -10 || echo "No KDE Platform runtimes found"
-        flatpak --user remote-ls flathub | grep "org.kde.Sdk" | head -10 || echo "No KDE SDK runtimes found"
+        echo "Checking available Freedesktop Platform runtimes..."
+        flatpak --user remote-ls flathub | grep "org.freedesktop.Platform" | head -10 || echo "No Freedesktop Platform runtimes found"
+        flatpak --user remote-ls flathub | grep "org.freedesktop.Sdk" | head -10 || echo "No Freedesktop SDK runtimes found"
         
-        # Install required runtimes for user (using version 6.8)
-        echo "Installing KDE Platform 6.8 and SDK..."
-        flatpak --user install --assumeyes flathub org.kde.Platform//6.8 org.kde.Sdk//6.8 || echo "Warning: Failed to install runtimes"
+        # Install required runtimes for user (using version 23.08)
+        echo "Installing Freedesktop Platform 23.08 and SDK..."
+        flatpak --user install --assumeyes flathub org.freedesktop.Platform//23.08 org.freedesktop.Sdk//23.08 || echo "Warning: Failed to install runtimes"
         
         # Verify installation
         echo "Verifying Flatpak installation..."
-        flatpak --user list | grep org.kde.Platform || echo "Warning: KDE Platform not found in user installation"
-        flatpak --user list | grep org.kde.Sdk || echo "Warning: KDE SDK not found in user installation"
+        flatpak --user list | grep org.freedesktop.Platform || echo "Warning: Freedesktop Platform not found in user installation"
+        flatpak --user list | grep org.freedesktop.Sdk || echo "Warning: Freedesktop SDK not found in user installation"
         
         echo "Flatpak setup complete"
     

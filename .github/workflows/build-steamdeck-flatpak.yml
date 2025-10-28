@@ -66,18 +66,18 @@ jobs:
         
         # Update remote list and refresh
         flatpak --user remote-list
-        flatpak --user remote-info flathub org.kde.Platform//23.08
         
         # Refresh the remote to ensure it's properly configured
         flatpak --user remote-refresh flathub
         
         # Check available runtimes
         echo "Checking available KDE Platform runtimes..."
-        flatpak --user remote-ls flathub | grep org.kde.Platform || echo "No KDE Platform runtimes found"
-        flatpak --user remote-ls flathub | grep org.kde.Sdk || echo "No KDE SDK runtimes found"
+        flatpak --user remote-ls flathub | grep "org.kde.Platform" | head -10 || echo "No KDE Platform runtimes found"
+        flatpak --user remote-ls flathub | grep "org.kde.Sdk" | head -10 || echo "No KDE SDK runtimes found"
         
-        # Install required runtimes for user (using available versions)
-        flatpak --user install --assumeyes org.kde.Platform//23.08 org.kde.Sdk//23.08 || true
+        # Install required runtimes for user (using version 6.8)
+        echo "Installing KDE Platform 6.8 and SDK..."
+        flatpak --user install --assumeyes flathub org.kde.Platform//6.8 org.kde.Sdk//6.8 || echo "Warning: Failed to install runtimes"
         
         # Verify installation
         echo "Verifying Flatpak installation..."

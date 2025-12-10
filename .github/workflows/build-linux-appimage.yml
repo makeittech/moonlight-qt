@@ -20,157 +20,175 @@ on:
 
 jobs:
   build-appimage:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
       with:
         fetch-depth: 0  # Full history for versioning
         submodules: recursive
     
-    - name: Install build dependencies
+    - name: Setup environment
       run: |
-        echo "Installing build dependencies..."
-        sudo apt-get update
-        sudo apt-get install -y \
-          build-essential \
-          cmake \
-          ninja-build \
-          pkg-config \
-          libssl-dev \
-          libavcodec-dev \
-          libavformat-dev \
-          libavutil-dev \
-          libswresample-dev \
-          libswscale-dev \
-          libsdl2-dev \
-          libopus-dev \
-          libpulse-dev \
-          libasound2-dev \
-          libvdpau-dev \
-          libva-dev \
-          libdrm-dev \
-          libxkbcommon-dev \
-          libx11-dev \
-          libxext-dev \
-          libxfixes-dev \
-          libxrandr-dev \
-          libxss-dev \
-          libxtst-dev \
-          libxcb1-dev \
-          libxcb-xinerama0-dev \
-          libxcb-xinput-dev \
-          libxcb-xfixes0-dev \
-          libxcb-icccm4-dev \
-          libxcb-image0-dev \
-          libxcb-shm0-dev \
-          libxcb-keysyms1-dev \
-          libxcb-render-util0-dev \
-          libxcb-render0-dev \
-          libxcb-shape0-dev \
-          libxcb-sync-dev \
-          libxcb-xfixes0-dev \
-          libxcb-xinerama0-dev \
-          libxcb-dri3-dev \
-          libxcb-cursor-dev \
-          libxcb-util-dev \
-          libxcb-ewmh-dev \
-          libxcb-icccm4-dev \
-          libxcb-image0-dev \
-          libxcb-randr0-dev \
-          libxcb-render-util0-dev \
-          libxcb-xkb-dev \
-          libxkbcommon-x11-dev \
-          libgl1-mesa-dev \
-          libegl1-mesa-dev \
-          libgles2-mesa-dev \
-          libglu1-mesa-dev \
-          libxcomposite-dev \
-          libxcursor-dev \
-          libxi-dev \
-          libxrender-dev \
-          libfontconfig1-dev \
-          libfreetype6-dev \
-          libxcb-util1-dev \
-          libxcb-xinerama0-dev \
-          libxcb-xkb-dev \
-          libxkbcommon-x11-dev \
-          git
+        wget -qO - https://packages.lunarg.com/lunarg-signing-key-pub.asc | sudo apt-key add -
+        sudo wget -qO /etc/apt/sources.list.d/lunarg-vulkan-1.4.313-jammy.list https://packages.lunarg.com/vulkan/1.4.313/lunarg-vulkan-1.4.313-jammy.list
+        sudo apt update
+        sudo apt install -y qt6-base-dev qt6-declarative-dev libqt6svg6-dev qml6-module-qtquick-controls qml6-module-qtquick-templates qml6-module-qtquick-layouts \
+          qml6-module-qtqml-workerscript qml6-module-qtquick-window qml6-module-qtquick python3-pip nasm libgbm-dev libdrm-dev libfreetype-dev libasound2-dev \
+          libdbus-1-dev libegl1-mesa-dev libgl1-mesa-dev libgles2-mesa-dev libglu1-mesa-dev libibus-1.0-dev libpulse-dev libudev-dev libx11-dev libxcursor-dev \
+          libxext-dev libxi-dev libxinerama-dev libxkbcommon-dev libxrandr-dev libxss-dev libxt-dev libxv-dev libxxf86vm-dev libxcb-dri3-dev libx11-xcb-dev \
+          wayland-protocols libopus-dev libvdpau-dev libgl-dev libpipewire-0.3-dev vulkan-sdk
+        sudo pip3 install meson
+        mkdir -p dep_root/{bin,include,lib}
+        echo "DEP_ROOT=$PWD/dep_root" >> "${GITHUB_ENV}"
+        echo "$PWD/dep_root/bin" >> "${GITHUB_PATH}"
     
-    - name: Install Qt 6
+    - name: Checkout SDL
+      uses: actions/checkout@v5
+      with:
+        repository: libsdl-org/SDL
+        ref: 235e4870af091ea7e3814ee2dbdb8e2ec627aaf0
+        path: deps/SDL
+    
+    - name: Build SDL
+      working-directory: deps/SDL
       run: |
-        echo "Installing Qt 6..."
-        sudo apt-get install -y \
-          qt6-base-dev \
-          qt6-base-dev-tools \
-          qt6-declarative-dev \
-          qt6-tools-dev \
-          qt6-tools-dev-tools \
-          qml6-module-qtquick \
-          qml6-module-qtquick-controls \
-          qml6-module-qtquick-controls2 \
-          qml6-module-qtquick-layouts \
-          qml6-module-qtquick-window \
-          qml6-module-qtquick-dialogs \
-          qml6-module-qtquick-templates \
-          qml6-module-qtmultimedia \
-          qml6-module-qtqml \
-          qml6-module-qtqml-models \
-          qml6-module-qtqml-workerscript || true
-        
-        # Verify qmake6 is available
-        qmake6 --version || (echo "qmake6 not found, trying alternative installation..." && sudo apt-get install -y qt6-base-dev qt6-tools-dev)
-        qmake6 --version
+        ./autogen.sh
+        ./configure
+        make -j$(nproc)
+        sudo make install
+    
+    - name: Checkout SDL_ttf
+      uses: actions/checkout@v5
+      with:
+        repository: libsdl-org/SDL_ttf
+        ref: release-2.22.0
+        path: deps/SDL_ttf
+        submodules: 'recursive'
+    
+    - name: Build SDL_ttf
+      working-directory: deps/SDL_ttf
+      run: |
+        ./autogen.sh
+        ./configure
+        make -j$(nproc)
+        sudo make install
+    
+    - name: Checkout libva
+      uses: actions/checkout@v5
+      with:
+        repository: intel/libva
+        ref: 2.22.0
+        path: deps/libva
+    
+    - name: Build libva
+      working-directory: deps/libva
+      run: |
+        ./autogen.sh
+        ./configure --enable-x11
+        make -j$(nproc)
+        sudo make install
+    
+    - name: Checkout libplacebo
+      uses: actions/checkout@v5
+      with:
+        repository: haasn/libplacebo
+        ref: 63a3d64ac32eaaa56aa60b5000d43c02544c6508
+        path: deps/libplacebo
+        submodules: 'recursive'
+    
+    - name: Build libplacebo
+      working-directory: deps/libplacebo
+      run: |
+        git apply ../../app/deploy/linux/appimage/*.patch
+        meson setup build -Dvulkan=enabled -Dopengl=disabled -Ddemos=false
+        ninja -C build
+        sudo ninja install -C build
+    
+    - name: Build dav1d
+      working-directory: deps
+      env:
+        DAV1D_VER: 1.5.1
+      run: |
+        git clone --branch $DAV1D_VER --depth 1 https://code.videolan.org/videolan/dav1d.git
+        pushd dav1d
+        meson setup build -Ddefault_library=static -Dbuildtype=release -Denable_tools=false -Denable_tests=false
+        ninja -C build
+        sudo ninja install -C build
+        popd
+    
+    - name: Checkout FFmpeg
+      uses: actions/checkout@v5
+      with:
+        repository: FFmpeg/FFmpeg
+        ref: dd00a614e16a15db0b230dfe45790e913e593695
+        path: deps/FFmpeg
+    
+    - name: Build FFmpeg
+      working-directory: deps/FFmpeg
+      run: |
+        ./configure --enable-pic --disable-static --enable-shared --disable-all --disable-autodetect --enable-avcodec --enable-avformat --enable-swscale \
+          --enable-decoder=h264 --enable-decoder=hevc --enable-decoder=av1 \
+          --enable-vaapi --enable-hwaccel=h264_vaapi --enable-hwaccel=hevc_vaapi --enable-hwaccel=av1_vaapi \
+          --enable-vdpau --enable-hwaccel=h264_vdpau  --enable-hwaccel=hevc_vdpau --enable-hwaccel=av1_vdpau \
+          --enable-libdrm --enable-vulkan --enable-hwaccel=h264_vulkan --enable-hwaccel=hevc_vulkan --enable-hwaccel=av1_vulkan \
+          --enable-libdav1d --enable-decoder=libdav1d
+        make -j$(nproc)
+        sudo make install
     
     - name: Install linuxdeployqt
+      working-directory: dep_root/bin
       run: |
-        echo "Installing linuxdeployqt..."
-        wget -q -c "https://github.com/probonopd/linuxdeployqt/releases/download/continuous/linuxdeployqt-continuous-x86_64.AppImage"
-        chmod +x linuxdeployqt-continuous-x86_64.AppImage
-        sudo mv linuxdeployqt-continuous-x86_64.AppImage /usr/local/bin/linuxdeployqt
-        linuxdeployqt --version
+        wget -O linuxdeployqt https://github.com/probonopd/linuxdeployqt/releases/download/continuous/linuxdeployqt-continuous-x86_64.AppImage
+        chmod a+x linuxdeployqt
+        echo "$PWD" >> "${GITHUB_PATH}"
     
     - name: Get version info
       id: version
       run: |
         if [ "${{ github.event.inputs.version }}" != "" ]; then
-          VERSION="${{ github.event.inputs.version }}"
+          CI_VERSION="${{ github.event.inputs.version }}"
         elif [[ $GITHUB_REF == refs/tags/* ]]; then
-          VERSION="${GITHUB_REF#refs/tags/}"
+          CI_VERSION="${GITHUB_REF#refs/tags/}"
         else
           BASE_VERSION=$(cat app/version.txt)
           GIT_COMMIT=$(git rev-parse --short HEAD)
-          BUILD_DATE=$(date +%Y%m%d)
-          VERSION="${BASE_VERSION}-${GIT_COMMIT}-${BUILD_DATE}"
+          CI_VERSION="${BASE_VERSION}-${GIT_COMMIT}"
         fi
-        echo "version=$VERSION" >> $GITHUB_OUTPUT
-        echo "VERSION=$VERSION" >> $GITHUB_ENV
-        echo "CI_VERSION=$VERSION" >> $GITHUB_ENV
-        echo "Building version: $VERSION"
+        echo "version=$CI_VERSION" >> $GITHUB_OUTPUT
+        echo "CI_VERSION=$CI_VERSION" >> $GITHUB_ENV
+        echo "Building version: $CI_VERSION"
     
     - name: Build AppImage
+      env:
+        CI_VERSION: ${{ env.CI_VERSION }}
       run: |
-        echo "Building AppImage..."
+        sudo ldconfig
         chmod +x scripts/build-appimage.sh
-        ./scripts/build-appimage.sh
+        scripts/build-appimage.sh
     
     - name: Find and rename AppImage
       run: |
         echo "Finding AppImage artifact..."
-        # Search in multiple possible locations
-        APPIMAGE=$(find . -name "*.AppImage" -type f ! -name "linuxdeployqt*" | head -n 1)
-        if [ -z "$APPIMAGE" ]; then
-          echo "❌ Error: AppImage not found!"
-          echo "Searching in build directory:"
+        # The build script creates the AppImage in build/installer-release/
+        APPIMAGE="build/installer-release/Moonlight-${{ steps.version.outputs.version }}-x86_64.AppImage"
+        if [ ! -f "$APPIMAGE" ]; then
+          echo "❌ Error: AppImage not found at expected location: $APPIMAGE"
+          echo "Searching for AppImage files:"
           find build -name "*.AppImage" -type f || echo "No AppImage files found"
-          echo "Searching in current directory:"
-          find . -maxdepth 2 -name "*.AppImage" -type f || echo "No AppImage files found in current directory"
-          exit 1
+          # Try to find any AppImage
+          FOUND=$(find build -name "*.AppImage" -type f ! -name "linuxdeployqt*" | head -n 1)
+          if [ -n "$FOUND" ]; then
+            echo "Found AppImage at: $FOUND"
+            APPIMAGE="$FOUND"
+          else
+            exit 1
+          fi
         fi
         
         echo "Found AppImage: $APPIMAGE"
         NEW_NAME="Moonlight-${{ steps.version.outputs.version }}-x86_64.AppImage"
-        mv "$APPIMAGE" "$NEW_NAME"
+        cp "$APPIMAGE" "$NEW_NAME"
         chmod +x "$NEW_NAME"
         ls -lh "$NEW_NAME"
         echo "APPIMAGE_PATH=$NEW_NAME" >> $GITHUB_ENV

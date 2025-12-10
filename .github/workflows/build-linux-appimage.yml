@@ -1,0 +1,258 @@
+name: Build Linux AppImage
+
+on:
+  push:
+    tags:
+      - 'v*'
+    branches:
+      - master
+      - main
+  pull_request:
+    branches:
+      - master
+      - main
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Custom version (optional)'
+        required: false
+        default: ''
+
+jobs:
+  build-appimage:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Full history for versioning
+        submodules: recursive
+    
+    - name: Install build dependencies
+      run: |
+        echo "Installing build dependencies..."
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential \
+          cmake \
+          ninja-build \
+          pkg-config \
+          libssl-dev \
+          libavcodec-dev \
+          libavformat-dev \
+          libavutil-dev \
+          libswresample-dev \
+          libswscale-dev \
+          libsdl2-dev \
+          libopus-dev \
+          libpulse-dev \
+          libasound2-dev \
+          libvdpau-dev \
+          libva-dev \
+          libdrm-dev \
+          libxkbcommon-dev \
+          libx11-dev \
+          libxext-dev \
+          libxfixes-dev \
+          libxrandr-dev \
+          libxss-dev \
+          libxtst-dev \
+          libxcb1-dev \
+          libxcb-xinerama0-dev \
+          libxcb-xinput-dev \
+          libxcb-xfixes0-dev \
+          libxcb-icccm4-dev \
+          libxcb-image0-dev \
+          libxcb-shm0-dev \
+          libxcb-keysyms1-dev \
+          libxcb-render-util0-dev \
+          libxcb-render0-dev \
+          libxcb-shape0-dev \
+          libxcb-sync-dev \
+          libxcb-xfixes0-dev \
+          libxcb-xinerama0-dev \
+          libxcb-dri3-dev \
+          libxcb-cursor-dev \
+          libxcb-util-dev \
+          libxcb-ewmh-dev \
+          libxcb-icccm4-dev \
+          libxcb-image0-dev \
+          libxcb-randr0-dev \
+          libxcb-render-util0-dev \
+          libxcb-xkb-dev \
+          libxkbcommon-x11-dev \
+          libgl1-mesa-dev \
+          libegl1-mesa-dev \
+          libgles2-mesa-dev \
+          libglu1-mesa-dev \
+          libxcomposite-dev \
+          libxcursor-dev \
+          libxi-dev \
+          libxrender-dev \
+          libfontconfig1-dev \
+          libfreetype6-dev \
+          libxcb-util1-dev \
+          libxcb-xinerama0-dev \
+          libxcb-xkb-dev \
+          libxkbcommon-x11-dev \
+          git
+    
+    - name: Install Qt 6
+      run: |
+        echo "Installing Qt 6..."
+        sudo apt-get install -y \
+          qt6-base-dev \
+          qt6-base-dev-tools \
+          qt6-declarative-dev \
+          qt6-tools-dev \
+          qt6-tools-dev-tools \
+          qml6-module-qtquick \
+          qml6-module-qtquick-controls \
+          qml6-module-qtquick-controls2 \
+          qml6-module-qtquick-layouts \
+          qml6-module-qtquick-window \
+          qml6-module-qtquick-dialogs \
+          qml6-module-qtquick-templates \
+          qml6-module-qtmultimedia \
+          qml6-module-qtqml \
+          qml6-module-qtqml-models \
+          qml6-module-qtqml-workerscript || true
+        
+        # Verify qmake6 is available
+        qmake6 --version || (echo "qmake6 not found, trying alternative installation..." && sudo apt-get install -y qt6-base-dev qt6-tools-dev)
+        qmake6 --version
+    
+    - name: Install linuxdeployqt
+      run: |
+        echo "Installing linuxdeployqt..."
+        wget -q -c "https://github.com/probonopd/linuxdeployqt/releases/download/continuous/linuxdeployqt-continuous-x86_64.AppImage"
+        chmod +x linuxdeployqt-continuous-x86_64.AppImage
+        sudo mv linuxdeployqt-continuous-x86_64.AppImage /usr/local/bin/linuxdeployqt
+        linuxdeployqt --version
+    
+    - name: Get version info
+      id: version
+      run: |
+        if [ "${{ github.event.inputs.version }}" != "" ]; then
+          VERSION="${{ github.event.inputs.version }}"
+        elif [[ $GITHUB_REF == refs/tags/* ]]; then
+          VERSION="${GITHUB_REF#refs/tags/}"
+        else
+          BASE_VERSION=$(cat app/version.txt)
+          GIT_COMMIT=$(git rev-parse --short HEAD)
+          BUILD_DATE=$(date +%Y%m%d)
+          VERSION="${BASE_VERSION}-${GIT_COMMIT}-${BUILD_DATE}"
+        fi
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "VERSION=$VERSION" >> $GITHUB_ENV
+        echo "CI_VERSION=$VERSION" >> $GITHUB_ENV
+        echo "Building version: $VERSION"
+    
+    - name: Build AppImage
+      run: |
+        echo "Building AppImage..."
+        chmod +x scripts/build-appimage.sh
+        ./scripts/build-appimage.sh
+    
+    - name: Find and rename AppImage
+      run: |
+        echo "Finding AppImage artifact..."
+        # Search in multiple possible locations
+        APPIMAGE=$(find . -name "*.AppImage" -type f ! -name "linuxdeployqt*" | head -n 1)
+        if [ -z "$APPIMAGE" ]; then
+          echo "❌ Error: AppImage not found!"
+          echo "Searching in build directory:"
+          find build -name "*.AppImage" -type f || echo "No AppImage files found"
+          echo "Searching in current directory:"
+          find . -maxdepth 2 -name "*.AppImage" -type f || echo "No AppImage files found in current directory"
+          exit 1
+        fi
+        
+        echo "Found AppImage: $APPIMAGE"
+        NEW_NAME="Moonlight-${{ steps.version.outputs.version }}-x86_64.AppImage"
+        mv "$APPIMAGE" "$NEW_NAME"
+        chmod +x "$NEW_NAME"
+        ls -lh "$NEW_NAME"
+        echo "APPIMAGE_PATH=$NEW_NAME" >> $GITHUB_ENV
+    
+    - name: Create release notes
+      run: |
+        cat > "RELEASE_NOTES_${{ steps.version.outputs.version }}.md" << EOF
+        # Moonlight Linux AppImage v${{ steps.version.outputs.version }}
+        
+        ## Release Information
+        - **Version**: ${{ steps.version.outputs.version }}
+        - **Build Date**: $(date)
+        - **Git Commit**: $(git rev-parse --short HEAD)
+        - **Git Tag**: $(git describe --tags --abbrev=0 2>/dev/null || echo "none")
+        - **Build Type**: Linux AppImage (x86_64)
+        
+        ## Installation Instructions
+        
+        ### Method 1: Direct Execution
+        \`\`\`bash
+        chmod +x Moonlight-${{ steps.version.outputs.version }}-x86_64.AppImage
+        ./Moonlight-${{ steps.version.outputs.version }}-x86_64.AppImage
+        \`\`\`
+        
+        ### Method 2: Install to System
+        \`\`\`bash
+        # Make executable
+        chmod +x Moonlight-${{ steps.version.outputs.version }}-x86_64.AppImage
+        # Move to applications directory (optional)
+        sudo mv Moonlight-${{ steps.version.outputs.version }}-x86_64.AppImage /opt/
+        # Create desktop entry (optional)
+        sudo ln -s /opt/Moonlight-${{ steps.version.outputs.version }}-x86_64.AppImage /usr/local/bin/moonlight
+        \`\`\`
+        
+        ### Method 3: Using AppImageLauncher
+        If you have AppImageLauncher installed, simply double-click the AppImage file and it will be integrated into your system.
+        
+        ## Features
+        - Game streaming from NVIDIA GeForce Experience or Sunshine
+        - Low latency streaming optimized for gaming
+        - Full controller support
+        - 4K HDR streaming support
+        - Audio streaming with 5.1/7.1 surround sound
+        - Portable - no installation required
+        - Self-contained - includes all dependencies
+        
+        ## System Requirements
+        - Linux x86_64 system
+        - Network connection to host PC
+        - Host PC running GeForce Experience or Sunshine
+        - FUSE (for AppImage execution)
+        
+        ## Troubleshooting
+        If you encounter issues:
+        1. Ensure FUSE is installed: \`sudo apt-get install fuse\` (Ubuntu/Debian) or \`sudo yum install fuse\` (RHEL/CentOS)
+        2. Make the AppImage executable: \`chmod +x Moonlight-*.AppImage\`
+        3. Ensure your host PC is running GeForce Experience or Sunshine
+        4. Check network connectivity between devices
+        5. Verify firewall settings allow Moonlight traffic
+        
+        ## Support
+        For support, visit: https://github.com/moonlight-stream/moonlight-qt
+        EOF
+    
+    - name: Upload AppImage artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: moonlight-appimage-${{ steps.version.outputs.version }}
+        path: |
+          ${{ env.APPIMAGE_PATH }}
+          RELEASE_NOTES_${{ steps.version.outputs.version }}.md
+        retention-days: 30
+    
+    - name: Create Release (on tag)
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          ${{ env.APPIMAGE_PATH }}
+          RELEASE_NOTES_${{ steps.version.outputs.version }}.md
+        body_path: RELEASE_NOTES_${{ steps.version.outputs.version }}.md
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

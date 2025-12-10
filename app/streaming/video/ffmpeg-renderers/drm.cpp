@@ -12,7 +12,23 @@ extern "C" {
 }
 
 #include <libdrm/drm_fourcc.h>
+#ifdef __linux__
 #include <linux/dma-buf.h>
+#else //bundle on BSDs
+typedef uint64_t __u64;
+struct dma_buf_sync {
+    __u64 flags;
+};
+#define DMA_BUF_SYNC_READ      (1 << 0)
+#define DMA_BUF_SYNC_WRITE     (2 << 0)
+#define DMA_BUF_SYNC_RW        (DMA_BUF_SYNC_READ | DMA_BUF_SYNC_WRITE)
+#define DMA_BUF_SYNC_START     (0 << 2)
+#define DMA_BUF_SYNC_END       (1 << 2)
+#define DMA_BUF_SYNC_VALID_FLAGS_MASK \
+    (DMA_BUF_SYNC_RW | DMA_BUF_SYNC_END)
+#define DMA_BUF_BASE		'b'
+#define DMA_BUF_IOCTL_SYNC	_IOW(DMA_BUF_BASE, 0, struct dma_buf_sync)
+#endif
 
 // Special Rockchip type
 #ifndef DRM_FORMAT_NA12
@@ -150,8 +166,6 @@ DrmRenderer::DrmRenderer(AVHWDeviceType hwDeviceType, IFFmpegRenderer *backendRe
       m_CrtcId(0),
       m_PlaneId(0),
       m_CurrentFbId(0),
-      m_LastFullRange(false),
-      m_LastColorSpace(-1),
       m_Plane(nullptr),
       m_ColorEncodingProp(nullptr),
       m_ColorRangeProp(nullptr),
@@ -1235,93 +1249,88 @@ void DrmRenderer::renderFrame(AVFrame* frame)
         return;
     }
 
-    int colorspace = getFrameColorspace(frame);
-    bool fullRange = isFrameFullRange(frame);
+    if (hasFrameFormatChanged(frame)) {
+        // Set COLOR_RANGE property for the plane
+        {
+            const char* desiredValue = getDrmColorRangeValue(frame);
 
-    // We also update the color range when the colorspace changes in order to handle initialization
-    // where the last color range value may not actual be applied to the plane.
-    if (fullRange != m_LastFullRange || colorspace != m_LastColorSpace) {
-        const char* desiredValue = getDrmColorRangeValue(frame);
+            if (m_ColorRangeProp != nullptr && desiredValue != nullptr) {
+                int i;
 
-        if (m_ColorRangeProp != nullptr && desiredValue != nullptr) {
-            int i;
+                for (i = 0; i < m_ColorRangeProp->count_enums; i++) {
+                    if (!strcmp(desiredValue, m_ColorRangeProp->enums[i].name)) {
+                        err = drmModeObjectSetProperty(m_DrmFd, m_PlaneId, DRM_MODE_OBJECT_PLANE,
+                                                       m_ColorRangeProp->prop_id, m_ColorRangeProp->enums[i].value);
+                        if (err == 0) {
+                            SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                                        "%s: %s",
+                                        m_ColorRangeProp->name,
+                                        desiredValue);
+                        }
+                        else {
+                            SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
+                                         "drmModeObjectSetProperty(%s) failed: %d",
+                                         m_ColorRangeProp->name,
+                                         errno);
+                            // Non-fatal
+                        }
 
-            for (i = 0; i < m_ColorRangeProp->count_enums; i++) {
-                if (!strcmp(desiredValue, m_ColorRangeProp->enums[i].name)) {
-                    err = drmModeObjectSetProperty(m_DrmFd, m_PlaneId, DRM_MODE_OBJECT_PLANE,
-                                                   m_ColorRangeProp->prop_id, m_ColorRangeProp->enums[i].value);
-                    if (err == 0) {
-                        SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
-                                    "%s: %s",
-                                    m_ColorRangeProp->name,
-                                    desiredValue);
+                        break;
                     }
-                    else {
-                        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
-                                     "drmModeObjectSetProperty(%s) failed: %d",
-                                     m_ColorRangeProp->name,
-                                     errno);
-                        // Non-fatal
-                    }
+                }
 
-                    break;
+                if (i == m_ColorRangeProp->count_enums) {
+                    SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                                "Unable to find matching COLOR_RANGE value for '%s'. Colors may be inaccurate!",
+                                desiredValue);
                 }
             }
-
-            if (i == m_ColorRangeProp->count_enums) {
+            else if (desiredValue != nullptr) {
                 SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
-                            "Unable to find matching COLOR_RANGE value for '%s'. Colors may be inaccurate!",
-                            desiredValue);
+                            "COLOR_RANGE property does not exist on output plane. Colors may be inaccurate!");
             }
         }
-        else if (desiredValue != nullptr) {
-            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
-                        "COLOR_RANGE property does not exist on output plane. Colors may be inaccurate!");
-        }
 
-        m_LastFullRange = fullRange;
-    }
+        // Set COLOR_ENCODING property for the plane
+        {
+            const char* desiredValue = getDrmColorEncodingValue(frame);
 
-    if (colorspace != m_LastColorSpace) {
-        const char* desiredValue = getDrmColorEncodingValue(frame);
+            if (m_ColorEncodingProp != nullptr && desiredValue != nullptr) {
+                int i;
 
-        if (m_ColorEncodingProp != nullptr && desiredValue != nullptr) {
-            int i;
+                for (i = 0; i < m_ColorEncodingProp->count_enums; i++) {
+                    if (!strcmp(desiredValue, m_ColorEncodingProp->enums[i].name)) {
+                        err = drmModeObjectSetProperty(m_DrmFd, m_PlaneId, DRM_MODE_OBJECT_PLANE,
+                                                       m_ColorEncodingProp->prop_id, m_ColorEncodingProp->enums[i].value);
+                        if (err == 0) {
+                            SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                                        "%s: %s",
+                                        m_ColorEncodingProp->name,
+                                        desiredValue);
+                        }
+                        else {
+                            SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
+                                         "drmModeObjectSetProperty(%s) failed: %d",
+                                         m_ColorEncodingProp->name,
+                                         errno);
+                            // Non-fatal
+                        }
 
-            for (i = 0; i < m_ColorEncodingProp->count_enums; i++) {
-                if (!strcmp(desiredValue, m_ColorEncodingProp->enums[i].name)) {
-                    err = drmModeObjectSetProperty(m_DrmFd, m_PlaneId, DRM_MODE_OBJECT_PLANE,
-                                                   m_ColorEncodingProp->prop_id, m_ColorEncodingProp->enums[i].value);
-                    if (err == 0) {
-                        SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
-                                    "%s: %s",
-                                    m_ColorEncodingProp->name,
-                                    desiredValue);
+                        break;
                     }
-                    else {
-                        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
-                                     "drmModeObjectSetProperty(%s) failed: %d",
-                                     m_ColorEncodingProp->name,
-                                     errno);
-                        // Non-fatal
-                    }
+                }
 
-                    break;
+                if (i == m_ColorEncodingProp->count_enums) {
+                    SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                                "Unable to find matching COLOR_ENCODING value for '%s'. Colors may be inaccurate!",
+                                desiredValue);
                 }
             }
-
-            if (i == m_ColorEncodingProp->count_enums) {
+            else if (desiredValue != nullptr) {
                 SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
-                            "Unable to find matching COLOR_ENCODING value for '%s'. Colors may be inaccurate!",
-                            desiredValue);
+                            "COLOR_ENCODING property does not exist on output plane. Colors may be inaccurate!");
             }
         }
-        else if (desiredValue != nullptr) {
-            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
-                        "COLOR_ENCODING property does not exist on output plane. Colors may be inaccurate!");
-        }
-
-        m_LastColorSpace = colorspace;
     }
 
     // Update the overlay

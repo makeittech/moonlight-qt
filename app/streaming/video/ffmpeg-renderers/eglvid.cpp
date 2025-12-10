@@ -2,6 +2,7 @@
 #include "eglvid.h"
 
 #include "path.h"
+#include "utils.h"
 #include "streaming/session.h"
 #include "streaming/streamutils.h"
 
@@ -271,6 +272,9 @@ void EGLRenderer::renderOverlay(Overlay::OverlayType type, int viewportWidth, in
         return;
     }
 
+    // Adjust the viewport to the whole window before rendering the overlays
+    glViewport(0, 0, viewportWidth, viewportHeight);
+
     glUseProgram(m_OverlayShaderProgram);
 
     glBindBuffer(GL_ARRAY_BUFFER, m_OverlayVbos[type]);
@@ -281,7 +285,6 @@ void EGLRenderer::renderOverlay(Overlay::OverlayType type, int viewportWidth, in
 
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, m_OverlayTextures[type]);
-    glUniform1i(m_OverlayShaderProgramParams[OVERLAY_PARAM_TEXTURE], 0);
 
     glDrawArrays(GL_TRIANGLES, 0, 6);
 }
@@ -364,8 +367,15 @@ bool EGLRenderer::compileShaders() {
 
         m_ShaderProgramParams[NV12_PARAM_YUVMAT] = glGetUniformLocation(m_ShaderProgram, "yuvmat");
         m_ShaderProgramParams[NV12_PARAM_OFFSET] = glGetUniformLocation(m_ShaderProgram, "offset");
+        m_ShaderProgramParams[NV12_PARAM_CHROMA_OFFSET] = glGetUniformLocation(m_ShaderProgram, "chromaOffset");
         m_ShaderProgramParams[NV12_PARAM_PLANE1] = glGetUniformLocation(m_ShaderProgram, "plane1");
         m_ShaderProgramParams[NV12_PARAM_PLANE2] = glGetUniformLocation(m_ShaderProgram, "plane2");
+
+        // Set up constant uniforms
+        glUseProgram(m_ShaderProgram);
+        glUniform1i(m_ShaderProgramParams[NV12_PARAM_PLANE1], 0);
+        glUniform1i(m_ShaderProgramParams[NV12_PARAM_PLANE2], 1);
+        glUseProgram(0);
     }
     else if (m_EGLImagePixelFormat == AV_PIX_FMT_DRM_PRIME) {
         m_ShaderProgram = compileShader("egl_opaque.vert", "egl_opaque.frag");
@@ -374,6 +384,11 @@ bool EGLRenderer::compileShaders() {
         }
 
         m_ShaderProgramParams[OPAQUE_PARAM_TEXTURE] = glGetUniformLocation(m_ShaderProgram, "uTexture");
+
+        // Set up constant uniforms
+        glUseProgram(m_ShaderProgram);
+        glUniform1i(m_ShaderProgramParams[OPAQUE_PARAM_TEXTURE], 0);
+        glUseProgram(0);
     }
     else {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
@@ -389,6 +404,10 @@ bool EGLRenderer::compileShaders() {
     }
 
     m_OverlayShaderProgramParams[OVERLAY_PARAM_TEXTURE] = glGetUniformLocation(m_OverlayShaderProgram, "uTexture");
+
+    glUseProgram(m_OverlayShaderProgram);
+    glUniform1i(m_OverlayShaderProgramParams[OVERLAY_PARAM_TEXTURE], 0);
+    glUseProgram(0);
 
     return true;
 }
@@ -413,6 +432,13 @@ bool EGLRenderer::initialize(PDECODER_PARAMETERS params)
     // Vulkan was used before and SDL is trying to load EGL.
     if (params->videoFormat & VIDEO_FORMAT_MASK_10BIT) {
         EGL_LOG(Info, "EGL doesn't support HDR rendering");
+        return false;
+    }
+
+    // If we're using X11 GLX (both in SDL and Qt), don't use this renderer.
+    // Switching between EGL and GLX can cause interoperability issues.
+    if (!WMUtils::isEGLSafe()) {
+        EGL_LOG(Warn, "Disabled due to use of GLX");
         return false;
     }
 
@@ -639,71 +665,7 @@ bool EGLRenderer::initialize(PDECODER_PARAMETERS params)
     // Detach the context from this thread, so the render thread can attach it
     SDL_GL_MakeCurrent(m_Window, nullptr);
 
-    if (err == GL_NO_ERROR) {
-        // If we got a working GL implementation via EGL, avoid using GLX from now on.
-        // GLX will cause problems if we later want to use EGL again on this window.
-        SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "EGL passed preflight checks. Using EGL for GL context creation.");
-        SDL_SetHint(SDL_HINT_VIDEO_X11_FORCE_EGL, "1");
-    }
-
     return err == GL_NO_ERROR;
-}
-
-const float *EGLRenderer::getColorOffsets(const AVFrame* frame) {
-    static const float limitedOffsets[] = { 16.0f / 255.0f, 128.0f / 255.0f, 128.0f / 255.0f };
-    static const float fullOffsets[] = { 0.0f, 128.0f / 255.0f, 128.0f / 255.0f };
-
-    return isFrameFullRange(frame) ? fullOffsets : limitedOffsets;
-}
-
-const float *EGLRenderer::getColorMatrix(const AVFrame* frame) {
-    /* The conversion matrices are shamelessly stolen from linux:
-     * drivers/media/platform/imx-pxp.c:pxp_setup_csc
-     */
-    static const float bt601Lim[] = {
-        1.1644f, 1.1644f, 1.1644f,
-        0.0f, -0.3917f, 2.0172f,
-        1.5960f, -0.8129f, 0.0f
-    };
-    static const float bt601Full[] = {
-        1.0f, 1.0f, 1.0f,
-        0.0f, -0.3441f, 1.7720f,
-        1.4020f, -0.7141f, 0.0f
-    };
-    static const float bt709Lim[] = {
-        1.1644f, 1.1644f, 1.1644f,
-        0.0f, -0.2132f, 2.1124f,
-        1.7927f, -0.5329f, 0.0f
-    };
-    static const float bt709Full[] = {
-        1.0f, 1.0f, 1.0f,
-        0.0f, -0.1873f, 1.8556f,
-        1.5748f, -0.4681f, 0.0f
-    };
-    static const float bt2020Lim[] = {
-        1.1644f, 1.1644f, 1.1644f,
-        0.0f, -0.1874f, 2.1418f,
-        1.6781f, -0.6505f, 0.0f
-    };
-    static const float bt2020Full[] = {
-        1.0f, 1.0f, 1.0f,
-        0.0f, -0.1646f, 1.8814f,
-        1.4746f, -0.5714f, 0.0f
-    };
-
-    bool fullRange = isFrameFullRange(frame);
-    switch (getFrameColorspace(frame)) {
-        case COLORSPACE_REC_601:
-            return fullRange ? bt601Full : bt601Lim;
-        case COLORSPACE_REC_709:
-            return fullRange ? bt709Full : bt709Lim;
-        case COLORSPACE_REC_2020:
-            return fullRange ? bt2020Full : bt2020Lim;
-        default:
-            SDL_assert(false);
-    }
-
-    return bt601Lim;
 }
 
 bool EGLRenderer::specialize() {
@@ -861,23 +823,26 @@ void EGLRenderer::renderFrame(AVFrame* frame)
     glUseProgram(m_ShaderProgram);
     m_glBindVertexArrayOES(m_VAO);
 
-    // Bind parameters for the shaders
-    if (m_EGLImagePixelFormat == AV_PIX_FMT_NV12 || m_EGLImagePixelFormat == AV_PIX_FMT_P010) {
-        glUniformMatrix3fv(m_ShaderProgramParams[NV12_PARAM_YUVMAT], 1, GL_FALSE, getColorMatrix(frame));
-        glUniform3fv(m_ShaderProgramParams[NV12_PARAM_OFFSET], 1, getColorOffsets(frame));
-        glUniform1i(m_ShaderProgramParams[NV12_PARAM_PLANE1], 0);
-        glUniform1i(m_ShaderProgramParams[NV12_PARAM_PLANE2], 1);
-    }
-    else if (m_EGLImagePixelFormat == AV_PIX_FMT_DRM_PRIME) {
-        glUniform1i(m_ShaderProgramParams[OPAQUE_PARAM_TEXTURE], 0);
+    // If the frame format has changed, we'll need to recompute the constants
+    if (hasFrameFormatChanged(frame) && (m_EGLImagePixelFormat == AV_PIX_FMT_NV12 || m_EGLImagePixelFormat == AV_PIX_FMT_P010)) {
+        std::array<float, 9> colorMatrix;
+        std::array<float, 3> yuvOffsets;
+        std::array<float, 2> chromaOffset;
+
+        getFramePremultipliedCscConstants(frame, colorMatrix, yuvOffsets);
+        getFrameChromaCositingOffsets(frame, chromaOffset);
+        chromaOffset[0] /= frame->width;
+        chromaOffset[1] /= frame->height;
+
+        glUniformMatrix3fv(m_ShaderProgramParams[NV12_PARAM_YUVMAT], 1, GL_FALSE, colorMatrix.data());
+        glUniform3fv(m_ShaderProgramParams[NV12_PARAM_OFFSET], 1, yuvOffsets.data());
+        glUniform2fv(m_ShaderProgramParams[NV12_PARAM_CHROMA_OFFSET], 1, chromaOffset.data());
     }
 
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 
     m_glBindVertexArrayOES(0);
 
-    // Adjust the viewport to the whole window before rendering the overlays
-    glViewport(0, 0, drawableWidth, drawableHeight);
     for (int i = 0; i < Overlay::OverlayMax; i++) {
         renderOverlay((Overlay::OverlayType)i, drawableWidth, drawableHeight);
     }

@@ -48,18 +48,6 @@ Item {
         console.error(text)
     }
 
-    function displayLaunchWarning(text)
-    {
-        // This toast appears for 3 seconds, just shorter than how long
-        // Session will wait for it to be displayed. This gives it time
-        // to transition to invisible before continuing.
-        var toast = Qt.createQmlObject('import QtQuick.Controls 2.2; ToolTip {}', parent, '')
-        toast.text = text
-        toast.timeout = 3000
-        toast.visible = true
-        console.warn(text)
-    }
-
     function quitStarting()
     {
         // Avoid the push transition animation
@@ -151,7 +139,6 @@ Item {
         session.stageFailed.connect(stageFailed)
         session.connectionStarted.connect(connectionStarted)
         session.displayLaunchError.connect(displayLaunchError)
-        session.displayLaunchWarning.connect(displayLaunchWarning)
         session.quitStarting.connect(quitStarting)
         session.sessionFinished.connect(sessionFinished)
         session.readyForDeletion.connect(sessionReadyForDeletion)
@@ -175,7 +162,20 @@ Item {
         // middle of the animation on Windows, which looks very
         // obviously broken.
         interval: 100
-        onTriggered: stageSpinner.running = true
+        onTriggered: stageSpinner.visible = true
+    }
+
+    Timer {
+        id: startSessionTimer
+        onTriggered: {
+            // Garbage collect QML stuff before we start streaming,
+            // since we'll probably be streaming for a while and we
+            // won't be able to GC during the stream.
+            gc()
+
+            // Run the streaming session to completion
+            session.start()
+        }
     }
 
     Loader {
@@ -195,13 +195,38 @@ Item {
             // Stop GUI gamepad usage now
             SdlGamepadKeyNavigation.disable()
 
-            // Garbage collect QML stuff before we start streaming,
-            // since we'll probably be streaming for a while and we
-            // won't be able to GC during the stream.
-            gc()
+            // Initialize the session and probe for host/client capabilities
+            if (!session.initialize(window)) {
+                sessionFinished(0);
+                sessionReadyForDeletion();
+                return;
+            }
 
-            // Run the streaming session to completion
-            session.exec(window)
+            // Don't wait unless we have toasts to display
+            startSessionTimer.interval = 0
+
+            // Display the toasts together in a vertical centered arrangement
+            var yOffset = 0
+            for (var i = 0; i < session.launchWarnings.length; i++) {
+                var text = session.launchWarnings[i]
+                console.warn(text)
+
+                // Show the tooltip for 3 seconds
+                var toast = Qt.createQmlObject('import QtQuick.Controls 2.2; ToolTip {}', parent, '')
+                toast.timeout = 3000
+                toast.text = text
+                toast.y += yOffset
+                toast.visible = true
+
+                // Offset the next toast below the previous one
+                yOffset = toast.y + toast.padding + toast.height
+
+                // Allow an extra 500 ms for the tooltip's fade-out animation to finish
+                startSessionTimer.interval = toast.timeout + 500;
+            }
+
+            // Start the timer to wait for toasts (or start the session immediately)
+            startSessionTimer.start()
         }
 
         sourceComponent: Item {}
@@ -213,7 +238,8 @@ Item {
 
         BusyIndicator {
             id: stageSpinner
-            running: false
+            running: visible
+            visible: false
         }
 
         Label {

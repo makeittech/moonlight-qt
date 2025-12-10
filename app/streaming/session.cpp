@@ -52,9 +52,12 @@
 #include <QImage>
 #include <QGuiApplication>
 #include <QCursor>
-#include <QWindow>
 #include <QScreen>
 #include <QTimer>
+
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+#include <QQuickOpenGLUtils>
+#endif
 
 #define CONN_TEST_SERVER "qt.conntest.moonlight-stream.org"
 
@@ -217,12 +220,12 @@ void Session::clSetHdrMode(bool enabled)
     // If we're in the process of recreating our decoder when we get
     // this callback, we'll drop it. The main thread will make the
     // callback when it finishes creating the new decoder.
-    if (SDL_AtomicTryLock(&s_ActiveSession->m_DecoderLock)) {
+    if (SDL_TryLockMutex(s_ActiveSession->m_DecoderLock) == 0) {
         IVideoDecoder* decoder = s_ActiveSession->m_VideoDecoder;
         if (decoder != nullptr) {
             decoder->setHdrMode(enabled);
         }
-        SDL_AtomicUnlock(&s_ActiveSession->m_DecoderLock);
+        SDL_UnlockMutex(s_ActiveSession->m_DecoderLock);
     }
 }
 
@@ -379,15 +382,15 @@ int Session::drSubmitDecodeUnit(PDECODE_UNIT du)
     // safely return DR_OK and wait for the IDR frame request by
     // the decoder reinitialization code.
 
-    if (SDL_AtomicTryLock(&s_ActiveSession->m_DecoderLock)) {
+    if (SDL_TryLockMutex(s_ActiveSession->m_DecoderLock) == 0) {
         IVideoDecoder* decoder = s_ActiveSession->m_VideoDecoder;
         if (decoder != nullptr) {
             int ret = decoder->submitDecodeUnit(du);
-            SDL_AtomicUnlock(&s_ActiveSession->m_DecoderLock);
+            SDL_UnlockMutex(s_ActiveSession->m_DecoderLock);
             return ret;
         }
         else {
-            SDL_AtomicUnlock(&s_ActiveSession->m_DecoderLock);
+            SDL_UnlockMutex(s_ActiveSession->m_DecoderLock);
             return DR_OK;
         }
     }
@@ -574,7 +577,7 @@ Session::Session(NvComputer* computer, NvApp& app, StreamingPreferences *prefere
       m_App(app),
       m_Window(nullptr),
       m_VideoDecoder(nullptr),
-      m_DecoderLock(0),
+      m_DecoderLock(SDL_CreateMutex()),
       m_AudioMuted(false),
       m_QtWindow(nullptr),
       m_UnexpectedTermination(true), // Failure prior to streaming is unexpected
@@ -595,8 +598,18 @@ Session::Session(NvComputer* computer, NvApp& app, StreamingPreferences *prefere
 {
 }
 
-bool Session::initialize()
+Session::~Session()
 {
+    // NB: This may not get destroyed for a long time! Don't put any non-trivial cleanup here.
+    // Use Session::exec() or DeferredSessionCleanupTask instead.
+
+    SDL_DestroyMutex(m_DecoderLock);
+}
+
+bool Session::initialize(QQuickWindow* qtWindow)
+{
+    m_QtWindow = qtWindow;
+
 #ifdef Q_OS_DARWIN
     if (qEnvironmentVariableIntValue("I_WANT_BUGGY_FULLSCREEN") == 0) {
         // If we have a notch and the user specified one of the two native display modes
@@ -813,10 +826,25 @@ bool Session::initialize()
             }
         }
 #else
-        // Deprioritize AV1 unless we can't hardware decode HEVC and have HDR enabled.
+        // Deprioritize AV1 unless we can't hardware decode HEVC, and have HDR enabled
+        // or we're on Windows.
+        //
+        // Normally, we'd assume hardware that can't decode HEVC definitely can't decode
+        // AV1 either, and we wouldn't even bother probing for AV1 support. However, some
+        // Windows business systems have HEVC support disabled in firmware from the factory,
+        // yet they can still decode AV1 in hardware. To avoid falling back to H.264 on
+        // these systems, we don't deprioritize AV1. This firmware-based HEVC licensing
+        // behavior seems to be unique to Windows, and Linux on the same system is able
+        // to decode HEVC in hardware normally using VAAPI.
+        // https://www.reddit.com/r/GeForceNOW/comments/1omsckt/psa_be_wary_of_purchasing_dell_computers_with/
+        //
         // We want to keep AV1 at the top of the list for HDR with software decoding
         // because dav1d is higher performance than FFmpeg's HEVC software decoder.
-        if (hevcDA == DecoderAvailability::Hardware || !m_Preferences->enableHdr) {
+        if (hevcDA == DecoderAvailability::Hardware
+#ifndef Q_OS_WIN32
+            || !m_Preferences->enableHdr
+#endif
+            ) {
             m_SupportedVideoFormats.deprioritizeByMask(VIDEO_FORMAT_MASK_AV1);
         }
 #endif
@@ -937,37 +965,16 @@ bool Session::initialize()
         return false;
     }
 
-    if (m_Preferences->configurationWarnings) {
-        // Display launch warnings in Qt only after destroying SDL's window.
-        // This avoids conflicts between the windows on display subsystems
-        // such as KMSDRM that only support a single window.
-        for (const auto &text : m_LaunchWarnings) {
-            // Emit the warning to the UI
-            emit displayLaunchWarning(text);
-
-            // Wait a little bit so the user can actually read what we just said.
-            // This wait is a little longer than the actual toast timeout (3 seconds)
-            // to allow it to transition off the screen before continuing.
-            uint32_t start = SDL_GetTicks();
-            while (!SDL_TICKS_PASSED(SDL_GetTicks(), start + 3500)) {
-                SDL_Delay(5);
-
-                if (!m_ThreadedExec) {
-                    // Pump the UI loop while we wait if we're on the main thread
-                    QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
-                    QCoreApplication::sendPostedEvents();
-                }
-            }
-        }
-    }
-
     return true;
 }
 
 void Session::emitLaunchWarning(QString text)
 {
-    // Queue this launch warning to be displayed after validation
-    m_LaunchWarnings.append(text);
+    if (m_Preferences->configurationWarnings) {
+        // Queue this launch warning to be displayed after validation
+        m_LaunchWarnings.append(text);
+        emit launchWarningsChanged();
+    }
 }
 
 bool Session::validateLaunch(SDL_Window* testWindow)
@@ -1490,10 +1497,10 @@ void Session::toggleFullscreen()
     // On Apple Silicon Macs, the AVSampleBufferDisplayLayer may cause WindowServer
     // to deadlock when transitioning out of fullscreen. Destroy the decoder before
     // exiting fullscreen as a workaround. See issue #973.
-    SDL_AtomicLock(&m_DecoderLock);
+    SDL_LockMutex(m_DecoderLock);
     delete m_VideoDecoder;
     m_VideoDecoder = nullptr;
-    SDL_AtomicUnlock(&m_DecoderLock);
+    SDL_UnlockMutex(m_DecoderLock);
 #endif
 
     // Actually enter/leave fullscreen
@@ -1717,72 +1724,8 @@ void Session::setShouldExitAfterQuit()
     m_ShouldExitAfterQuit = true;
 }
 
-class ExecThread : public QThread
+void Session::start()
 {
-public:
-    ExecThread(Session* session) :
-        QThread(nullptr),
-        m_Session(session)
-    {
-        setObjectName("Session Exec");
-    }
-
-    void run() override
-    {
-        m_Session->execInternal();
-    }
-
-    Session* m_Session;
-};
-
-void Session::exec(QWindow* qtWindow)
-{
-    m_QtWindow = qtWindow;
-
-    // Use a separate thread for the streaming session on X11 or Wayland
-    // to ensure we don't stomp on Qt's GL context. This breaks when using
-    // the Qt EGLFS backend, so we will restrict this to X11
-    m_ThreadedExec = WMUtils::isRunningX11() || WMUtils::isRunningWayland();
-
-    if (m_ThreadedExec) {
-        // Run the streaming session on a separate thread for Linux/BSD
-        ExecThread execThread(this);
-        execThread.start();
-
-        // Until the SDL streaming window is created, we should continue
-        // to update the Qt UI to allow warning messages to display and
-        // make sure that the Qt window can hide itself.
-        while (!execThread.wait(10) && m_Window == nullptr) {
-            QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
-            QCoreApplication::sendPostedEvents();
-        }
-        QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
-        QCoreApplication::sendPostedEvents();
-
-        // SDL is in charge now. Wait until the streaming thread exits
-        // to further update the Qt window.
-        execThread.wait();
-    }
-    else {
-        // Run the streaming session on the main thread for Windows and macOS
-        execInternal();
-    }
-}
-
-void Session::execInternal()
-{
-    // Complete initialization in this deferred context to avoid
-    // calling expensive functions in the constructor (during the
-    // process of loading the StreamSegue).
-    //
-    // NB: This initializes the SDL video subsystem, so it must be
-    // called on the main thread.
-    if (!initialize()) {
-        emit sessionFinished(0);
-        emit readyForDeletion();
-        return;
-    }
-
     // Wait for any old session to finish cleanup
     s_ActiveSessionSemaphore.acquire();
 
@@ -1793,27 +1736,15 @@ void Session::execInternal()
     // NB: m_InputHandler must be initialize before starting the connection.
     m_InputHandler = new SdlInputHandler(*m_Preferences, m_StreamConfig.width, m_StreamConfig.height);
 
-    AsyncConnectionStartThread asyncConnThread(this);
-    if (!m_ThreadedExec) {
-        // Kick off the async connection thread while we sit here and pump the event loop
-        asyncConnThread.start();
-        while (!asyncConnThread.wait(10)) {
-            QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
-            QCoreApplication::sendPostedEvents();
-        }
+    // Kick off the async connection thread then return to the caller to pump the event loop
+    auto thread = new AsyncConnectionStartThread(this);
+    QObject::connect(thread, &QThread::finished, this, &Session::exec);
+    QObject::connect(thread, &QThread::finished, thread, &QThread::deleteLater);
+    thread->start();
+}
 
-        // Pump the event loop one last time to ensure we pick up any events from
-        // the thread that happened while it was in the final successful QThread::wait().
-        QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
-        QCoreApplication::sendPostedEvents();
-    }
-    else {
-        // We're already in a separate thread so run the connection operations
-        // synchronously and don't pump the event loop. The main thread is already
-        // pumping the event loop for us.
-        asyncConnThread.run();
-    }
-
+void Session::exec()
+{
     // If the connection failed, clean up and abort the connection.
     if (!m_AsyncConnectionSuccess) {
         delete m_InputHandler;
@@ -1837,6 +1768,10 @@ void Session::execInternal()
     SDL_GL_SetAttribute(SDL_GL_RED_SIZE, 8);
     SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, 8);
     SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 8);
+
+    // Disable depth and stencil buffers
+    SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 0);
+    SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 0);
 
     // We always want a resizable window with High DPI enabled
     Uint32 defaultWindowFlags = SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_RESIZABLE;
@@ -2014,6 +1949,9 @@ void Session::execInternal()
     // Toggle the stats overlay if requested by the user
     m_OverlayManager.setOverlayState(Overlay::OverlayDebug, m_Preferences->showPerformanceOverlay);
 
+    // Switch to async logging mode when we enter the SDL loop
+    StreamUtils::enterAsyncLoggingMode();
+
     // Hijack this thread to be the SDL main thread. We have to do this
     // because we want to suspend all Qt processing until the stream is over.
     SDL_Event event;
@@ -2108,6 +2046,7 @@ void Session::execInternal()
                 if (m_Preferences->muteOnFocusLoss) {
                     m_AudioMuted = false;
                 }
+                m_InputHandler->notifyFocusGained();
                 break;
             case SDL_WINDOWEVENT_LEAVE:
                 m_InputHandler->notifyMouseLeave();
@@ -2224,7 +2163,7 @@ void Session::execInternal()
                             event.type);
             }
 
-            SDL_AtomicLock(&m_DecoderLock);
+            SDL_LockMutex(m_DecoderLock);
 
             // Destroy the old decoder
             delete m_VideoDecoder;
@@ -2270,7 +2209,7 @@ void Session::execInternal()
                                    enableVsync && m_Preferences->framePacing,
                                    false,
                                    s_ActiveSession->m_VideoDecoder)) {
-                    SDL_AtomicUnlock(&m_DecoderLock);
+                    SDL_UnlockMutex(m_DecoderLock);
                     SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
                                  "Failed to recreate decoder after reset");
                     emit displayLaunchError(tr("Unable to initialize video decoder. Please check your streaming settings and try again."));
@@ -2296,7 +2235,7 @@ void Session::execInternal()
             // After a window resize, we need to reset the pointer lock region
             m_InputHandler->updatePointerRegionLock();
 
-            SDL_AtomicUnlock(&m_DecoderLock);
+            SDL_UnlockMutex(m_DecoderLock);
             break;
 
         case SDL_KEYUP:
@@ -2361,10 +2300,21 @@ void Session::execInternal()
         case SDL_FINGERUP:
             m_InputHandler->handleTouchFingerEvent(&event.tfinger);
             break;
+        case SDL_DISPLAYEVENT:
+            switch (event.display.event) {
+            case SDL_DISPLAYEVENT_CONNECTED:
+            case SDL_DISPLAYEVENT_DISCONNECTED:
+                m_InputHandler->updatePointerRegionLock();
+                break;
+            }
+            break;
         }
     }
 
 DispatchDeferredCleanup:
+    // Switch back to synchronous logging mode
+    StreamUtils::exitAsyncLoggingMode();
+
     // Uncapture the mouse and hide the window immediately,
     // so we can return to the Qt GUI ASAP.
     m_InputHandler->setCaptureActive(false);
@@ -2386,10 +2336,10 @@ DispatchDeferredCleanup:
     // Destroy the decoder, since this must be done on the main thread
     // NB: This must happen before LiStopConnection() for pull-based
     // decoders.
-    SDL_AtomicLock(&m_DecoderLock);
+    SDL_LockMutex(m_DecoderLock);
     delete m_VideoDecoder;
     m_VideoDecoder = nullptr;
-    SDL_AtomicUnlock(&m_DecoderLock);
+    SDL_UnlockMutex(m_DecoderLock);
 
     // Propagate state changes from the SDL window back to the Qt window
     //

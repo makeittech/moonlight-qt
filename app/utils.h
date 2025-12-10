@@ -7,8 +7,10 @@
 
 namespace WMUtils {
     bool isRunningX11();
+    bool isRunningNvidiaProprietaryDriver();
     bool isRunningWayland();
     bool isRunningWindowManager();
     bool isRunningDesktopEnvironment();
+    bool isEGLSafe();
     QString getDrmCardOverride();
 }

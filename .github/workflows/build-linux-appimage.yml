@@ -1,0 +1,276 @@
+name: Build Linux AppImage
+
+on:
+  push:
+    tags:
+      - 'v*'
+    branches:
+      - master
+      - main
+  pull_request:
+    branches:
+      - master
+      - main
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Custom version (optional)'
+        required: false
+        default: ''
+
+jobs:
+  build-appimage:
+    runs-on: ubuntu-22.04
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v5
+      with:
+        fetch-depth: 0  # Full history for versioning
+        submodules: recursive
+    
+    - name: Setup environment
+      run: |
+        wget -qO - https://packages.lunarg.com/lunarg-signing-key-pub.asc | sudo apt-key add -
+        sudo wget -qO /etc/apt/sources.list.d/lunarg-vulkan-1.4.313-jammy.list https://packages.lunarg.com/vulkan/1.4.313/lunarg-vulkan-1.4.313-jammy.list
+        sudo apt update
+        sudo apt install -y qt6-base-dev qt6-declarative-dev libqt6svg6-dev qml6-module-qtquick-controls qml6-module-qtquick-templates qml6-module-qtquick-layouts \
+          qml6-module-qtqml-workerscript qml6-module-qtquick-window qml6-module-qtquick python3-pip nasm libgbm-dev libdrm-dev libfreetype-dev libasound2-dev \
+          libdbus-1-dev libegl1-mesa-dev libgl1-mesa-dev libgles2-mesa-dev libglu1-mesa-dev libibus-1.0-dev libpulse-dev libudev-dev libx11-dev libxcursor-dev \
+          libxext-dev libxi-dev libxinerama-dev libxkbcommon-dev libxrandr-dev libxss-dev libxt-dev libxv-dev libxxf86vm-dev libxcb-dri3-dev libx11-xcb-dev \
+          wayland-protocols libopus-dev libvdpau-dev libgl-dev libpipewire-0.3-dev vulkan-sdk
+        sudo pip3 install meson
+        mkdir -p dep_root/{bin,include,lib}
+        echo "DEP_ROOT=$PWD/dep_root" >> "${GITHUB_ENV}"
+        echo "$PWD/dep_root/bin" >> "${GITHUB_PATH}"
+    
+    - name: Checkout SDL
+      uses: actions/checkout@v5
+      with:
+        repository: libsdl-org/SDL
+        ref: 235e4870af091ea7e3814ee2dbdb8e2ec627aaf0
+        path: deps/SDL
+    
+    - name: Build SDL
+      working-directory: deps/SDL
+      run: |
+        ./autogen.sh
+        ./configure
+        make -j$(nproc)
+        sudo make install
+    
+    - name: Checkout SDL_ttf
+      uses: actions/checkout@v5
+      with:
+        repository: libsdl-org/SDL_ttf
+        ref: release-2.22.0
+        path: deps/SDL_ttf
+        submodules: 'recursive'
+    
+    - name: Build SDL_ttf
+      working-directory: deps/SDL_ttf
+      run: |
+        ./autogen.sh
+        ./configure
+        make -j$(nproc)
+        sudo make install
+    
+    - name: Checkout libva
+      uses: actions/checkout@v5
+      with:
+        repository: intel/libva
+        ref: 2.22.0
+        path: deps/libva
+    
+    - name: Build libva
+      working-directory: deps/libva
+      run: |
+        ./autogen.sh
+        ./configure --enable-x11
+        make -j$(nproc)
+        sudo make install
+    
+    - name: Checkout libplacebo
+      uses: actions/checkout@v5
+      with:
+        repository: haasn/libplacebo
+        ref: 63a3d64ac32eaaa56aa60b5000d43c02544c6508
+        path: deps/libplacebo
+        submodules: 'recursive'
+    
+    - name: Build libplacebo
+      working-directory: deps/libplacebo
+      run: |
+        git apply ../../app/deploy/linux/appimage/*.patch
+        meson setup build -Dvulkan=enabled -Dopengl=disabled -Ddemos=false
+        ninja -C build
+        sudo ninja install -C build
+    
+    - name: Build dav1d
+      working-directory: deps
+      env:
+        DAV1D_VER: 1.5.1
+      run: |
+        git clone --branch $DAV1D_VER --depth 1 https://code.videolan.org/videolan/dav1d.git
+        pushd dav1d
+        meson setup build -Ddefault_library=static -Dbuildtype=release -Denable_tools=false -Denable_tests=false
+        ninja -C build
+        sudo ninja install -C build
+        popd
+    
+    - name: Checkout FFmpeg
+      uses: actions/checkout@v5
+      with:
+        repository: FFmpeg/FFmpeg
+        ref: dd00a614e16a15db0b230dfe45790e913e593695
+        path: deps/FFmpeg
+    
+    - name: Build FFmpeg
+      working-directory: deps/FFmpeg
+      run: |
+        ./configure --enable-pic --disable-static --enable-shared --disable-all --disable-autodetect --enable-avcodec --enable-avformat --enable-swscale \
+          --enable-decoder=h264 --enable-decoder=hevc --enable-decoder=av1 \
+          --enable-vaapi --enable-hwaccel=h264_vaapi --enable-hwaccel=hevc_vaapi --enable-hwaccel=av1_vaapi \
+          --enable-vdpau --enable-hwaccel=h264_vdpau  --enable-hwaccel=hevc_vdpau --enable-hwaccel=av1_vdpau \
+          --enable-libdrm --enable-vulkan --enable-hwaccel=h264_vulkan --enable-hwaccel=hevc_vulkan --enable-hwaccel=av1_vulkan \
+          --enable-libdav1d --enable-decoder=libdav1d
+        make -j$(nproc)
+        sudo make install
+    
+    - name: Install linuxdeployqt
+      working-directory: dep_root/bin
+      run: |
+        wget -O linuxdeployqt https://github.com/probonopd/linuxdeployqt/releases/download/continuous/linuxdeployqt-continuous-x86_64.AppImage
+        chmod a+x linuxdeployqt
+        echo "$PWD" >> "${GITHUB_PATH}"
+    
+    - name: Get version info
+      id: version
+      run: |
+        if [ "${{ github.event.inputs.version }}" != "" ]; then
+          CI_VERSION="${{ github.event.inputs.version }}"
+        elif [[ $GITHUB_REF == refs/tags/* ]]; then
+          CI_VERSION="${GITHUB_REF#refs/tags/}"
+        else
+          BASE_VERSION=$(cat app/version.txt)
+          GIT_COMMIT=$(git rev-parse --short HEAD)
+          CI_VERSION="${BASE_VERSION}-${GIT_COMMIT}"
+        fi
+        echo "version=$CI_VERSION" >> $GITHUB_OUTPUT
+        echo "CI_VERSION=$CI_VERSION" >> $GITHUB_ENV
+        echo "Building version: $CI_VERSION"
+    
+    - name: Build AppImage
+      env:
+        CI_VERSION: ${{ env.CI_VERSION }}
+      run: |
+        sudo ldconfig
+        chmod +x scripts/build-appimage.sh
+        scripts/build-appimage.sh
+    
+    - name: Find and rename AppImage
+      run: |
+        echo "Finding AppImage artifact..."
+        # The build script creates the AppImage in build/installer-release/
+        APPIMAGE="build/installer-release/Moonlight-${{ steps.version.outputs.version }}-x86_64.AppImage"
+        if [ ! -f "$APPIMAGE" ]; then
+          echo "❌ Error: AppImage not found at expected location: $APPIMAGE"
+          echo "Searching for AppImage files:"
+          find build -name "*.AppImage" -type f || echo "No AppImage files found"
+          # Try to find any AppImage
+          FOUND=$(find build -name "*.AppImage" -type f ! -name "linuxdeployqt*" | head -n 1)
+          if [ -n "$FOUND" ]; then
+            echo "Found AppImage at: $FOUND"
+            APPIMAGE="$FOUND"
+          else
+            exit 1
+          fi
+        fi
+        
+        echo "Found AppImage: $APPIMAGE"
+        NEW_NAME="Moonlight-${{ steps.version.outputs.version }}-x86_64.AppImage"
+        cp "$APPIMAGE" "$NEW_NAME"
+        chmod +x "$NEW_NAME"
+        ls -lh "$NEW_NAME"
+        echo "APPIMAGE_PATH=$NEW_NAME" >> $GITHUB_ENV
+    
+    - name: Create release notes
+      run: |
+        cat > "RELEASE_NOTES_${{ steps.version.outputs.version }}.md" << EOF
+        # Moonlight Linux AppImage v${{ steps.version.outputs.version }}
+        
+        ## Release Information
+        - **Version**: ${{ steps.version.outputs.version }}
+        - **Build Date**: $(date)
+        - **Git Commit**: $(git rev-parse --short HEAD)
+        - **Git Tag**: $(git describe --tags --abbrev=0 2>/dev/null || echo "none")
+        - **Build Type**: Linux AppImage (x86_64)
+        
+        ## Installation Instructions
+        
+        ### Method 1: Direct Execution
+        \`\`\`bash
+        chmod +x Moonlight-${{ steps.version.outputs.version }}-x86_64.AppImage
+        ./Moonlight-${{ steps.version.outputs.version }}-x86_64.AppImage
+        \`\`\`
+        
+        ### Method 2: Install to System
+        \`\`\`bash
+        # Make executable
+        chmod +x Moonlight-${{ steps.version.outputs.version }}-x86_64.AppImage
+        # Move to applications directory (optional)
+        sudo mv Moonlight-${{ steps.version.outputs.version }}-x86_64.AppImage /opt/
+        # Create desktop entry (optional)
+        sudo ln -s /opt/Moonlight-${{ steps.version.outputs.version }}-x86_64.AppImage /usr/local/bin/moonlight
+        \`\`\`
+        
+        ### Method 3: Using AppImageLauncher
+        If you have AppImageLauncher installed, simply double-click the AppImage file and it will be integrated into your system.
+        
+        ## Features
+        - Game streaming from NVIDIA GeForce Experience or Sunshine
+        - Low latency streaming optimized for gaming
+        - Full controller support
+        - 4K HDR streaming support
+        - Audio streaming with 5.1/7.1 surround sound
+        - Portable - no installation required
+        - Self-contained - includes all dependencies
+        
+        ## System Requirements
+        - Linux x86_64 system
+        - Network connection to host PC
+        - Host PC running GeForce Experience or Sunshine
+        - FUSE (for AppImage execution)
+        
+        ## Troubleshooting
+        If you encounter issues:
+        1. Ensure FUSE is installed: \`sudo apt-get install fuse\` (Ubuntu/Debian) or \`sudo yum install fuse\` (RHEL/CentOS)
+        2. Make the AppImage executable: \`chmod +x Moonlight-*.AppImage\`
+        3. Ensure your host PC is running GeForce Experience or Sunshine
+        4. Check network connectivity between devices
+        5. Verify firewall settings allow Moonlight traffic
+        
+        ## Support
+        For support, visit: https://github.com/moonlight-stream/moonlight-qt
+        EOF
+    
+    - name: Upload AppImage artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: moonlight-appimage-${{ steps.version.outputs.version }}
+        path: |
+          ${{ env.APPIMAGE_PATH }}
+          RELEASE_NOTES_${{ steps.version.outputs.version }}.md
+        retention-days: 30
+    
+    - name: Create Release (on tag)
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          ${{ env.APPIMAGE_PATH }}
+          RELEASE_NOTES_${{ steps.version.outputs.version }}.md
+        body_path: RELEASE_NOTES_${{ steps.version.outputs.version }}.md
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

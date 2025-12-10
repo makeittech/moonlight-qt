@@ -249,20 +249,10 @@ ApplicationWindow {
         SdlGamepadKeyNavigation.notifyWindowFocus(visible && active)
     }
 
-    // Workaround for lack of instanceof in Qt 5.9.
-    //
-    // Based on https://stackoverflow.com/questions/13923794/how-to-do-a-is-a-typeof-or-instanceof-in-qml
-    function qmltypeof(obj, className) { // QtObject, string -> bool
-        // className plus "(" is the class instance without modification
-        // className plus "_QML" is the class instance with user-defined properties
-        var str = obj.toString();
-        return str.startsWith(className + "(") || str.startsWith(className + "_QML");
-    }
-
     function navigateTo(url, objectType)
     {
         var existingItem = stackView.find(function(item, index) {
-            return qmltypeof(item, objectType)
+            return item instanceof objectType
         })
 
         if (existingItem !== null) {
@@ -329,7 +319,7 @@ ApplicationWindow {
 
             Label {
                 id: versionLabel
-                visible: qmltypeof(stackView.currentItem, "SettingsView")
+                visible: stackView.currentItem instanceof SettingsView
                 text: qsTr("Version %1").arg(SystemProperties.versionString)
                 font.pointSize: 12
                 horizontalAlignment: Qt.AlignRight
@@ -339,7 +329,7 @@ ApplicationWindow {
             NavigableToolButton {
                 id: discordButton
                 visible: SystemProperties.hasBrowser &&
-                         qmltypeof(stackView.currentItem, "SettingsView")
+                         stackView.currentItem instanceof SettingsView
 
                 iconSource: "qrc:/res/discord.svg"
 
@@ -358,7 +348,7 @@ ApplicationWindow {
 
             NavigableToolButton {
                 id: addPcButton
-                visible: qmltypeof(stackView.currentItem, "PcView")
+                visible: stackView.currentItem instanceof PcView
 
                 iconSource:  "qrc:/res/ic_add_to_queue_white_48px.svg"
 
@@ -456,7 +446,7 @@ ApplicationWindow {
 
                 iconSource: "qrc:/res/ic_videogame_asset_white_48px.svg"
 
-                onClicked: navigateTo("qrc:/gui/GamepadMapper.qml", "GamepadMapper")
+                onClicked: navigateTo("qrc:/gui/GamepadMapper.qml", GamepadMapper)
 
                 Keys.onDownPressed: {
                     stackView.currentItem.forceActiveFocus(Qt.TabFocus)
@@ -468,7 +458,7 @@ ApplicationWindow {
 
                 iconSource:  "qrc:/res/settings.svg"
 
-                onClicked: navigateTo("qrc:/gui/SettingsView.qml", "SettingsView")
+                onClicked: navigateTo("qrc:/gui/SettingsView.qml", SettingsView)
 
                 Keys.onDownPressed: {
                     stackView.currentItem.forceActiveFocus(Qt.TabFocus)

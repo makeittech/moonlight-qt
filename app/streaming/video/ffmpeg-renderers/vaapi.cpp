@@ -34,6 +34,11 @@ VAAPIRenderer::VAAPIRenderer(int decoderSelectionPass)
     SDL_zero(m_PrimeDescriptor);
 #endif
 
+#ifdef HAVE_LIBVA_X11
+    m_XDisplay = nullptr;
+    m_XWindow = None;
+#endif
+
 #ifdef HAVE_LIBVA_DRM
     m_DrmFd = -1;
 #endif
@@ -74,6 +79,12 @@ VAAPIRenderer::~VAAPIRenderer()
     }
 #endif
 
+#ifdef HAVE_LIBVA_X11
+    if (m_XDisplay != nullptr) {
+        XCloseDisplay(m_XDisplay);
+    }
+#endif
+
     if (m_OverlayMutex != nullptr) {
         SDL_DestroyMutex(m_OverlayMutex);
     }
@@ -98,7 +109,19 @@ VAAPIRenderer::openDisplay(SDL_Window* window)
     if (info.subsystem == SDL_SYSWM_X11) {
 #ifdef HAVE_LIBVA_X11
         m_XWindow = info.info.x11.window;
-        display = vaGetDisplay(info.info.x11.display);
+
+        // It's possible to enter this function several times as we're probing VA drivers.
+        // Only open the new Display object the first time through.
+        if (m_XDisplay == nullptr) {
+            m_XDisplay = XOpenDisplay(XDisplayString(info.info.x11.display));
+            if (m_XDisplay == nullptr) {
+                SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
+                             "Unable to clone SDL X11 display for VAAPI");
+                return nullptr;
+            }
+        }
+
+        display = vaGetDisplay(m_XDisplay);
         if (display == nullptr) {
             SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
                          "Unable to open X11 display for VAAPI");
@@ -395,7 +418,11 @@ VAAPIRenderer::initialize(PDECODER_PARAMETERS params)
     // The Snap (core22) and Focal/Jammy Mesa drivers have a bug that causes
     // a large amount of video latency when using more than one reference frame
     // and severe rendering glitches on my Ryzen 3300U system.
-    m_HasRfiLatencyBug = vendorStr.contains("Gallium", Qt::CaseInsensitive) && qgetenv("IGNORE_RFI_LATENCY_BUG") != "1";
+    //
+    // This seems to no longer be a problem on Ubuntu 24.04 (even using core22),
+    // so let's disable this workaround by default in preparation for permanent
+    // removal if nobody encounters this again for a while.
+    m_HasRfiLatencyBug = vendorStr.contains("Gallium", Qt::CaseInsensitive) && qgetenv("HAS_RFI_LATENCY_BUG") == "1";
     if (m_HasRfiLatencyBug) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
                     "VAAPI driver is affected by RFI latency bug");
@@ -576,6 +603,15 @@ VAAPIRenderer::isDirectRenderingSupported()
                     "Using indirect rendering for YUV 4:4:4 video");
         return false;
     }
+    else if (m_OverlayFormat.fourcc == 0) {
+        // We ordinarily wouldn't consider lack of overlay support to be a
+        // dealbreaker for picking a renderer, however the only cases I've
+        // ever seen overlay format selection fail is on systems that will
+        // also silently fail in vaPutSurface() too.
+        SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                    "Using indirect rendering due to lack of overlay support");
+        return false;
+    }
 
     AVHWDeviceContext* deviceContext = (AVHWDeviceContext*)m_HwContext->data;
     AVVAAPIDeviceContext* vaDeviceContext = (AVVAAPIDeviceContext*)deviceContext->hwctx;
@@ -588,12 +624,6 @@ VAAPIRenderer::isDirectRenderingSupported()
             if (entrypoints[i] == VAEntrypointVideoProc) {
                 SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
                             "Using direct rendering with VAEntrypointVideoProc");
-
-                if (m_OverlayFormat.fourcc == 0) {
-                    SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
-                                "Unable to find supported subpicture format. Overlays will be unavailable!");
-                }
-
                 return true;
             }
         }

@@ -295,5 +295,5 @@ private:
     bool m_NeedsDelayedFlush;
     
     // Auto-connection
-    QString m_LastUsedHostUuid;
+    mutable QString m_LastUsedHostUuid;
 };

@@ -588,7 +588,7 @@ Session::Session(NvComputer* computer, NvApp& app, StreamingPreferences *prefere
       m_AsyncConnectionSuccess(false),
       m_PortTestResults(0),
       m_RetryCount(0),
-      m_MaxRetries(3),
+      m_MaxRetries(24), // 24 retries * 5 seconds per retry = ~2 minutes
       m_RetryInProgress(false),
       m_CancelRetry(false),
       m_OpusDecoder(nullptr),
@@ -2468,7 +2468,7 @@ void Session::retryConnection()
 
 void Session::setMaxRetries(int maxRetries)
 {
-    if (maxRetries >= 0 && maxRetries <= 10) {
+    if (maxRetries >= 0 && maxRetries <= 30) {
         m_MaxRetries = maxRetries;
     }
 }

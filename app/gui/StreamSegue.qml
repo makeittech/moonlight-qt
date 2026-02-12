@@ -98,12 +98,14 @@ Item {
     function retryStarting(retryCount, maxRetries)
     {
         console.log("Retry starting: " + retryCount + "/" + maxRetries)
+        // Update the stage text to show reconnection in progress
+        stageText = qsTr("Connection lost. Reconnecting... (%1/%2)").arg(retryCount).arg(maxRetries)
     }
     
     function retryFailed(retryCount, maxRetries)
     {
         console.log("Retry failed after " + retryCount + " attempts")
-        streamSegueErrorDialog.text = qsTr("Connection failed after %1 retry attempts. Please check your network connection and try again.").arg(maxRetries)
+        streamSegueErrorDialog.text = qsTr("Connection failed after %1 retry attempts (approximately 2 minutes). Please check your network connection and try again.").arg(maxRetries)
     }
     
     function retryCancelled()
